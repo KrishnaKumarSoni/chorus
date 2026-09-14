@@ -74,23 +74,14 @@ function Replies({ exchange }: { exchange: Exchange }) {
   if (mode === 'compare') {
     return <div className="mt-3 grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))' }}>{exchange.replies.map((t) => <MessageCard key={t.id} turn={t} />)}</div>;
   }
-  const rounds = [1, 2, 3].map((r) => exchange.replies.filter((t) => t.round === r));
-  const label = ['Round 1 · independent answers', 'Round 2 · critiques', 'Consensus'];
+  // Consensus is one chronological conversation, not a set of rounds.
+  const ordered = [...exchange.replies].sort((a, b) => a.index - b.index);
+  const settled = ordered.length >= 2 && ordered[ordered.length - 1].agreed && ordered[ordered.length - 2].agreed;
   return (
-    <div className="mt-3 flex flex-col gap-4">
-      {rounds.map((turns, i) =>
-        turns.length === 0 ? null : (
-          <div key={i}>
-            <div className="mb-2 flex items-center gap-2 text-caption font-semibold uppercase tracking-[0.08em]" style={{ color: i === 2 ? 'var(--accent)' : 'var(--muted)' }}>
-              <span className="h-px flex-1" style={{ background: 'var(--line-strong)' }} />
-              {label[i]}
-              <span className="h-px flex-1" style={{ background: 'var(--line-strong)' }} />
-            </div>
-            <div className="grid gap-3" style={{ gridTemplateColumns: i === 2 ? '1fr' : 'repeat(auto-fit, minmax(300px, 1fr))' }}>
-              {turns.map((t) => <MessageCard key={t.id} turn={t} emphasis={i === 2} />)}
-            </div>
-          </div>
-        ),
+    <div className="mt-3 flex flex-col gap-3">
+      {ordered.map((t) => <MessageCard key={t.id} turn={t} />)}
+      {settled && (
+        <p className="text-caption" style={{ color: 'var(--muted)' }}>Both models agreed, so the discussion stopped here.</p>
       )}
     </div>
   );

@@ -148,7 +148,7 @@ export function ChorusProvider({ children }: { children: React.ReactNode }) {
           break;
         case 'done':
           setAuth(e.provider, { phase: 'idle' });
-          toast(`Signed in to ${e.provider === 'claude' ? 'Claude' : 'GPT via Codex'}.`);
+          toast(`Signed in to ${e.provider === 'claude' ? 'Claude' : 'ChatGPT'}.`);
           // The provider can do more now, so re-probe and pick up any models it just exposed.
           api.providers
             .status(true)
@@ -188,7 +188,7 @@ export function ChorusProvider({ children }: { children: React.ReactNode }) {
         await api.auth.signOut(provider);
         const statuses = await api.providers.status();
         setState((s) => ({ ...s, statuses }));
-        toast(`Signed out of ${provider === 'claude' ? 'Claude' : 'GPT via Codex'}.`);
+        toast(`Signed out of ${provider === 'claude' ? 'Claude' : 'ChatGPT'}.`);
       },
       dismissToast(id) {
         setState((s) => ({ ...s, toasts: s.toasts.filter((t) => t.id !== id) }));

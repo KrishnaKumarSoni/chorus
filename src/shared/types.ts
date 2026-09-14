@@ -8,7 +8,10 @@ export interface Settings {
   soloProvider: Provider;
   models: Record<Provider, string>;
   effort: Record<Provider, Effort>;
-  consensusChair: Provider;
+  /** Who speaks first in a consensus run. */
+  consensusStarter: Provider;
+  /** Hard cap on model turns in a consensus run. */
+  consensusMaxTurns: number;
 }
 
 export type AttachmentKind = 'image' | 'text' | 'pdf' | 'docx' | 'sheet' | 'binary';
@@ -53,6 +56,8 @@ export interface Turn {
   author?: Author;
   round?: number;
   kind?: TurnKind;
+  /** Consensus only: this model signalled it had nothing substantive left to add. */
+  agreed?: boolean;
   status: TurnStatus;
   error?: string;
   usage?: Usage;

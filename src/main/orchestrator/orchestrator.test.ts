@@ -83,23 +83,58 @@ describe('Orchestrator', () => {
     expect(packetText(last)).not.toContain('claude says: third');
   });
 
-  it('consensus: two answers, two critiques, one synthesis by the chair, all in the shared transcript', async () => {
+  it('consensus alternates from the chosen starter, in one shared chronological transcript', async () => {
+    await settings.set({ consensusStarter: 'codex', consensusMaxTurns: 6 });
+    claude.reply = () => 'claude speaks';
+    codex.reply = () => 'codex speaks';
     const c = await store.create('consensus');
     await orch.send({ conversationId: c.id, text: 'decide', mode: 'consensus', attachmentIds: [] }, []);
-    const conv = (await store.get(c.id))!;
-    const a = conv.turns.filter((t) => t.role === 'assistant');
-    expect(a.map((t) => [t.author?.provider, t.round, t.kind])).toEqual([
-      ['claude', 1, 'answer'], ['codex', 1, 'answer'], ['claude', 2, 'critique'], ['codex', 2, 'critique'], ['claude', 3, 'synthesis'],
+    const a = (await store.get(c.id))!.turns.filter((t) => t.role === 'assistant');
+    expect(a.map((t) => [t.author?.provider, t.round])).toEqual([
+      ['codex', 1], ['claude', 2], ['codex', 3], ['claude', 4], ['codex', 5], ['claude', 6],
     ]);
-    // round 2 for codex saw claude's round-1 answer but not its own; the message is the critique instruction
-    const codexR2 = codex.calls[1];
-    expect(codexR2.packet.kind).toBe('resume');
-    expect(packetText(codexR2)).toContain('claude says: decide');
-    expect(packetText(codexR2)).not.toContain('codex says: decide');
-    expect(lastText(codexR2)).toContain('Agree');
-    const synth = claude.calls[2];
-    expect(packetText(synth)).toContain('codex says:');
-    expect(lastText(synth)).toContain('Unresolved');
+    // no critique / judge / synthesis roles are assigned
+    expect(a.every((t) => t.kind === undefined)).toBe(true);
+    // the replier sees what the other model just said and is asked to continue, not to critique
+    const claudeFirst = claude.calls[0];
+    expect(packetText(claudeFirst)).toContain('codex speaks');
+    expect(lastText(claudeFirst)).toContain('Continue the discussion');
+    expect(lastText(claudeFirst)).not.toContain('Unresolved');
+  });
+
+  it('consensus ends early once both models agree, and never shows the hidden marker', async () => {
+    await settings.set({ consensusStarter: 'claude', consensusMaxTurns: 10 });
+    claude.reply = () => 'Agreed, $20 it is. [[AGREED]]';
+    codex.reply = () => 'Same conclusion. [[AGREED]]';
+    const c = await store.create('consensus');
+    await orch.send({ conversationId: c.id, text: 'decide', mode: 'consensus', attachmentIds: [] }, []);
+    const a = (await store.get(c.id))!.turns.filter((t) => t.role === 'assistant');
+    expect(a.map((t) => t.author?.provider)).toEqual(['claude', 'codex']);
+    expect(a.every((t) => t.agreed)).toBe(true);
+    expect(a[0].text).toBe('Agreed, $20 it is.');
+    expect(a.some((t) => t.text.includes('AGREED'))).toBe(false);
+  });
+
+  it('consensus never forces agreement and stops at the turn cap', async () => {
+    await settings.set({ consensusStarter: 'claude', consensusMaxTurns: 4 });
+    claude.reply = () => 'I still disagree.';
+    codex.reply = () => 'And I still disagree.';
+    const c = await store.create('consensus');
+    await orch.send({ conversationId: c.id, text: 'decide', mode: 'consensus', attachmentIds: [] }, []);
+    const a = (await store.get(c.id))!.turns.filter((t) => t.role === 'assistant');
+    expect(a.map((t) => t.author?.provider)).toEqual(['claude', 'codex', 'claude', 'codex']);
+    expect(a.some((t) => t.agreed)).toBe(false);
+  });
+
+  it('consensus does not end on one model agreeing alone', async () => {
+    await settings.set({ consensusStarter: 'claude', consensusMaxTurns: 4 });
+    claude.reply = () => 'Fine by me. [[AGREED]]';
+    codex.reply = () => 'No, I disagree.';
+    const c = await store.create('consensus');
+    await orch.send({ conversationId: c.id, text: 'decide', mode: 'consensus', attachmentIds: [] }, []);
+    const a = (await store.get(c.id))!.turns.filter((t) => t.role === 'assistant');
+    expect(a).toHaveLength(4);
+    expect(a.map((t) => !!t.agreed)).toEqual([true, false, true, false]);
   });
 
   it('retries once with a fresh packet when a resumed session fails, then records the error', async () => {

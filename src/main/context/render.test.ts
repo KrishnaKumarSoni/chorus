@@ -11,7 +11,7 @@ describe('render', () => {
   it('labels turns by author and mode', () => {
     expect(renderTurn(user)).toBe('### User\nHello');
     expect(renderTurn(claude)).toBe('### Claude · claude-opus-5\nHi from Claude');
-    expect(renderTurn(codex)).toBe('### GPT (Codex) · gpt-5.5 [consensus, critique, round 2]\nHi from GPT');
+    expect(renderTurn(codex)).toBe('### ChatGPT · gpt-5.5 [consensus, critique, round 2]\nHi from GPT');
   });
   it('names attachments and reports failed or cancelled replies', () => {
     const att = { id: 'a', name: 'notes.md' } as Attachment;

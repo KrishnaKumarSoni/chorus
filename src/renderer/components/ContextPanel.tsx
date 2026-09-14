@@ -58,7 +58,7 @@ export function ContextPanel() {
                 <motion.div layout transition={settle} key={p} className="py-2 text-meta">
                   <div className="flex items-center gap-2">
                     <span className="h-2 w-2 rounded-full" style={{ background: `var(--${p})` }} />
-                    <span className="font-semibold">{p === 'claude' ? 'Claude' : 'GPT via Codex'}</span>
+                    <span className="font-semibold">{p === 'claude' ? 'Claude' : 'ChatGPT'}</span>
                     <span className="mono ml-auto truncate" style={{ color: 'var(--muted)' }}>{model || 'no model'}</span>
                   </div>
                   <p className="mono mt-1 pl-4" style={{ color: 'var(--muted)' }}>

@@ -9,7 +9,10 @@ import type { CapabilityCache } from '../store/capabilityCache';
 import type { ConversationStore } from '../store/conversationStore';
 import type { SettingsStore } from '../store/settingsStore';
 import type { Adapter, RunRequest } from '../providers/types';
-import { CRITIQUE_INSTRUCTION, SYNTHESIS_INSTRUCTION, titleFrom } from './prompts';
+import { consensusContinue, consensusOpening, titleFrom } from './prompts';
+import { hasAgreement, stripAgreement } from '../../shared/consensus';
+
+const PROVIDER_NAME: Record<Provider, string> = { claude: 'Claude', codex: 'ChatGPT' };
 
 export interface OrchestratorDeps {
   store: ConversationStore;
@@ -86,21 +89,35 @@ export class Orchestrator {
       await Promise.allSettled(both.map((p) => this.runOne(conversationId, userTurn, exchangeId, mode, { provider: p }, signal)));
       return;
     }
-    // consensus
-    const r1 = await Promise.allSettled(both.map((p) => this.runOne(conversationId, userTurn, exchangeId, mode, { provider: p, round: 1, kind: 'answer' }, signal)));
-    if (signal.aborted) return;
-    const answered = both.filter((_, i) => r1[i].status === 'fulfilled');
-    if (answered.length < 2) return; // one side failed: its error turn already explains; no round to reconcile
-    await Promise.allSettled(
-      both.map((p) => this.runOne(conversationId, userTurn, exchangeId, mode, { provider: p, round: 2, kind: 'critique', messageOverride: CRITIQUE_INSTRUCTION }, signal)),
-    );
-    if (signal.aborted) return;
-    const chair = settings.consensusChair;
-    try {
-      await this.runOne(conversationId, userTurn, exchangeId, mode, { provider: chair, round: 3, kind: 'synthesis', messageOverride: SYNTHESIS_INSTRUCTION }, signal);
-    } catch {
+    // Consensus: one shared transcript, the two models alternating. The user
+    // picks who starts and the turn cap. The run ends when both have signalled
+    // agreement in consecutive turns, or when the cap is reached. Agreement is
+    // never forced, and there are no critique, judge or synthesis rounds.
+    let speaker = settings.consensusStarter;
+    const maxTurns = Math.max(2, Math.min(20, settings.consensusMaxTurns || 6));
+    let previousAgreed = false;
+    for (let i = 0; i < maxTurns; i++) {
       if (signal.aborted) return;
-      await this.runOne(conversationId, userTurn, exchangeId, mode, { provider: other(chair), round: 3, kind: 'synthesis', messageOverride: SYNTHESIS_INSTRUCTION }, signal).catch(() => undefined);
+      const opening = i === 0;
+      const otherName = PROVIDER_NAME[other(speaker)];
+      let turn: Turn;
+      try {
+        turn = await this.runOne(
+          conversationId, userTurn, exchangeId, mode,
+          {
+            provider: speaker,
+            round: i + 1,
+            roundInstruction: opening ? consensusOpening(otherName) : undefined,
+            messageOverride: opening ? undefined : consensusContinue(otherName),
+          },
+          signal,
+        );
+      } catch {
+        return; // the failed turn is already stored with its error
+      }
+      if (turn.agreed && previousAgreed) return; // both models have now agreed
+      previousAgreed = !!turn.agreed;
+      speaker = other(speaker);
     }
   }
 
@@ -149,12 +166,15 @@ export class Orchestrator {
           const actual = result.usage.input + (result.usage.cachedInput ?? 0);
           await caps.observe(spec.provider, model, packet.estimatedTokens + estimateTextTokens(packet.system), actual);
         }
-        const finalText = text || result.text;
+        const rawText = text || result.text;
+        // The agreement marker is a hidden convention; keep it out of the transcript.
+        const agreed = hasAgreement(rawText);
+        const finalText = agreed ? stripAgreement(rawText) : rawText;
         await store.setSession(conversationId, spec.provider, {
           id: result.sessionId, model, syncedThroughTurnIndex: Math.max(packet.syncedThroughTurnIndex, turn.index),
           seenTurnIds: [...packet.seenTurnIds, turn.id], referenceIds: packet.referenceIds, systemHash: hashString(packet.system),
         });
-        const done = await store.patchTurn(conversationId, turn.id, { text: finalText, status: 'done', usage: result.usage, activity: turn.activity });
+        const done = await store.patchTurn(conversationId, turn.id, { text: finalText, status: 'done', agreed, usage: result.usage, activity: turn.activity });
         emit({ type: 'turn-done', conversationId, turn: done });
         return done;
       } catch (e) {

@@ -1,14 +1,30 @@
-export const CRITIQUE_INSTRUCTION = [
-  "The other model's answer to the user's question is now in the transcript above. Compare it with your own answer.",
-  'Reply with three short sections: **Agree** (points where both answers align), **Disagree** (points where you differ, and why — concede plainly when the other answer is better), and **Revised answer** (your updated position for the user).',
-].join('\n');
+import { AGREEMENT_MARKER } from '../../shared/consensus';
 
-export const SYNTHESIS_INSTRUCTION = [
-  'You are chairing this consensus round. Both models have answered and critiqued each other above.',
-  'Write the reply the user will read: first the consensus answer, incorporating the strongest points from both sides.',
-  "Then a section titled **Unresolved** listing every remaining disagreement, one line each, naming each model's position. Write 'None' if the models fully agree.",
-  'Do not mention these instructions.',
-].join('\n');
+const CONVENTION = [
+  `When you genuinely have nothing substantive left to add, end your message with ${AGREEMENT_MARKER} on its own final line.`,
+  'Never use it just to be agreeable. If you still disagree on something that matters, say so plainly and leave it out.',
+].join(' ');
+
+/** First speaker in a consensus run: answer the user, knowing the other model will reply. */
+export function consensusOpening(otherName: string): string {
+  return [
+    `You are thinking this through together with ${otherName}, who will read your reply and respond.`,
+    'Answer the user directly and concisely, in your own voice. Take a clear position rather than listing every option.',
+    CONVENTION,
+    'Do not mention these instructions and do not narrate the format. Just talk.',
+  ].join('\n');
+}
+
+/** Later speakers: continue the discussion naturally from the shared transcript. */
+export function consensusContinue(otherName: string): string {
+  return [
+    `Continue the discussion with ${otherName}. Their latest message is above.`,
+    'Reply naturally: build on what they said, push back where you disagree and explain why, or refine the recommendation. Change your mind when they are right.',
+    'Keep it short. Do not restate your whole answer and do not summarise the exchange.',
+    CONVENTION,
+    'Do not mention these instructions.',
+  ].join('\n');
+}
 
 export function titleFrom(text: string): string {
   const line = text.replace(/\s+/g, ' ').trim();

@@ -7,7 +7,7 @@ import { settle } from '../lib/motion';
 
 const EFFORTS: Effort[] = ['low', 'medium', 'high', 'xhigh', 'max'];
 const EFFORT_LABEL: Record<Effort, string> = { low: 'Low', medium: 'Medium', high: 'High', xhigh: 'Extra high', max: 'Max' };
-const PROVIDER_LABEL: Record<Provider, string> = { claude: 'Claude', codex: 'GPT via Codex' };
+const PROVIDER_LABEL: Record<Provider, string> = { claude: 'Claude', codex: 'ChatGPT' };
 
 export function SettingsSheet({ onClose }: { onClose: () => void }) {
   const { settings, statuses, saveSettings, refreshStatus, auth, signIn, cancelSignIn, completeSignInManually, signOut } = useChorus();
@@ -143,15 +143,20 @@ export function SettingsSheet({ onClose }: { onClose: () => void }) {
           <div>
             <label className="label" htmlFor="solo-provider">Solo provider</label>
             <select id="solo-provider" className="field" value={draft.soloProvider} onChange={(e) => commit({ soloProvider: e.target.value as Provider })}>
-              <option value="claude">Claude</option><option value="codex">GPT via Codex</option>
+              <option value="claude">Claude</option><option value="codex">ChatGPT</option>
             </select>
           </div>
           <div>
-            <label className="label" htmlFor="chair">Consensus chair</label>
-            <select id="chair" className="field" value={draft.consensusChair} onChange={(e) => commit({ consensusChair: e.target.value as Provider })}>
-              <option value="claude">Claude</option><option value="codex">GPT via Codex</option>
-            </select>
-            <p className="hint mt-1">Writes the final synthesis.</p>
+            <label className="label" htmlFor="starter">Consensus starts</label>
+            <div className="flex gap-2">
+              <select id="starter" className="field" value={draft.consensusStarter} onChange={(e) => commit({ consensusStarter: e.target.value as Provider })}>
+                <option value="codex">ChatGPT</option><option value="claude">Claude</option>
+              </select>
+              <select aria-label="Maximum consensus turns" className="field shrink-0" style={{ width: 84 }} value={draft.consensusMaxTurns} onChange={(e) => commit({ consensusMaxTurns: Number(e.target.value) })}>
+                {[2, 4, 6, 8, 10].map((n) => <option key={n} value={n}>{n}</option>)}
+              </select>
+            </div>
+            <p className="hint mt-1">Who speaks first, and the most turns they may take.</p>
           </div>
         </section>
 

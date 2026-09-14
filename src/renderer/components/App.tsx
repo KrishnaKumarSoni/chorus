@@ -61,7 +61,7 @@ function EmptyState({ onCreate }: { onCreate: () => void }) {
       <div className="no-drag max-w-[520px]">
         <p className="display text-display font-semibold">One transcript. Two models. Your call every message.</p>
         <p className="mt-3 text-body" style={{ color: 'var(--ink-2)' }}>
-          Ask Claude or GPT alone, run them side by side, or make them argue it out to a consensus. Files, images and your standing instructions travel with every turn.
+          Ask Claude or ChatGPT alone, run them side by side, or let them talk it through until they agree. Files, images and your standing instructions travel with every turn.
         </p>
         <button className="btn btn-primary mt-6 text-ui" onClick={onCreate}>Start a conversation</button>
         <p className="hint mt-3 mono">⌘N new · ⌘, settings</p>

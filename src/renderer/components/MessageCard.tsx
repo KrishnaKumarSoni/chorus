@@ -3,11 +3,12 @@ import { motion } from 'framer-motion';
 import { Warning, Prohibit, Copy } from '@phosphor-icons/react';
 import type { Turn } from '../../shared/types';
 import { Markdown } from './Markdown';
+import { stripAgreement } from '../../shared/consensus';
 import { useChorus } from '../lib/state';
 import { AttachmentChip } from './AttachmentChip';
 import { settle } from '../lib/motion';
 
-const NAME = { claude: 'Claude', codex: 'GPT via Codex' } as const;
+const NAME = { claude: 'Claude', codex: 'ChatGPT' } as const;
 
 export function UserCard({ turn }: { turn: Turn }) {
   return (
@@ -56,7 +57,7 @@ export function MessageCard({ turn, emphasis }: { turn: Turn; emphasis?: boolean
           </div>
         </div>
       ) : null}
-      {turn.text ? <Markdown text={turn.text} streaming={streaming} /> : streaming ? <Skeleton /> : null}
+      {turn.text ? <Markdown text={stripAgreement(turn.text)} streaming={streaming} /> : streaming ? <Skeleton /> : null}
       {turn.status === 'cancelled' && (
         <p className="mt-2 flex items-center gap-1 text-meta" style={{ color: 'var(--muted)' }}><Prohibit size={13} /> Stopped here</p>
       )}

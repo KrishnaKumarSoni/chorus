@@ -8,7 +8,8 @@ export const DEFAULT_SETTINGS: Settings = {
   soloProvider: 'claude',
   models: { claude: '', codex: '' },
   effort: { claude: 'high', codex: 'medium' },
-  consensusChair: 'claude',
+  consensusStarter: 'codex',
+  consensusMaxTurns: 6,
 };
 
 export class SettingsStore {

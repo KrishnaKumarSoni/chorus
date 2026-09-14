@@ -4,7 +4,7 @@ import { Paperclip, ArrowUp, Stop } from '@phosphor-icons/react';
 import { filesToSources, useChorus } from '../lib/state';
 import { ModeSwitch } from './ModeSwitch';
 import { AttachmentChip } from './AttachmentChip';
-import type { Attachment, Mode } from '../../shared/types';
+import type { Attachment, Mode, Provider } from '../../shared/types';
 import { settle } from '../lib/motion';
 
 export function Composer() {
@@ -90,15 +90,38 @@ export function Composer() {
           className="selectable w-full bg-transparent px-2 py-1.5 text-body outline-none" aria-label="Message" />
         <div className="mt-1 flex items-center gap-2 px-1">
           <ModeSwitch mode={mode} solo={settings?.soloProvider ?? 'claude'} onMode={setMode} onSolo={(p) => saveSettings({ soloProvider: p })} />
-          <button className="btn btn-ghost p-1.5" onClick={pick} aria-label="Attach files" title="Attach files" disabled={ingesting}><Paperclip size={16} /></button>
+          <button className="btn btn-ghost shrink-0 p-1.5" onClick={pick} aria-label="Attach files" title="Attach files" disabled={ingesting}><Paperclip size={16} /></button>
           {ingesting && <span className="hint">Reading file…</span>}
           <span className="hint ml-auto hidden lg:inline">Enter to send · Shift-Enter for a new line</span>
           {busy ? (
             <button className="btn btn-primary p-1.5" onClick={cancel} aria-label="Stop" style={{ background: 'var(--danger)' }}><Stop size={16} weight="fill" /></button>
           ) : (
-            <motion.button whileTap={{ scale: 0.96 }} className="btn btn-primary p-1.5" onClick={submit} aria-label="Send" aria-disabled={!text.trim() && attachments.length === 0}><ArrowUp size={16} weight="bold" /></motion.button>
+            <motion.button whileTap={{ scale: 0.96 }} className="btn btn-primary shrink-0 p-1.5" onClick={submit} aria-label="Send" aria-disabled={!text.trim() && attachments.length === 0}><ArrowUp size={16} weight="bold" /></motion.button>
           )}
         </div>
+        {mode === 'consensus' && (
+          <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1.5 border-t px-1 pt-2 text-meta" style={{ borderColor: 'var(--line)', color: 'var(--ink-2)' }}>
+            <span className="whitespace-nowrap">Starts</span>
+            <div className="flex shrink-0 overflow-hidden rounded-[8px] border" style={{ borderColor: 'var(--line-strong)' }}>
+              {(['codex', 'claude'] as Provider[]).map((p) => {
+                const on = (settings?.consensusStarter ?? 'codex') === p;
+                return (
+                  <button key={p} aria-pressed={on} className="whitespace-nowrap px-2.5 py-1"
+                    style={{ background: on ? 'var(--accent-soft)' : 'transparent', color: on ? 'var(--ink)' : 'var(--muted)', fontWeight: on ? 600 : 400 }}
+                    onClick={() => saveSettings({ consensusStarter: p })}>
+                    {p === 'codex' ? 'ChatGPT' : 'Claude'}
+                  </button>
+                );
+              })}
+            </div>
+            <label htmlFor="max-turns" className="ml-2 whitespace-nowrap">Max turns</label>
+            <select id="max-turns" className="field shrink-0 px-1.5 py-0.5 text-meta" style={{ width: 64 }} value={settings?.consensusMaxTurns ?? 6}
+              onChange={(e) => saveSettings({ consensusMaxTurns: Number(e.target.value) })}>
+              {[2, 4, 6, 8, 10].map((n) => <option key={n} value={n}>{n}</option>)}
+            </select>
+            <span className="hint ml-auto whitespace-nowrap">They stop early if they agree.</span>
+          </div>
+        )}
       </motion.div>
     </div>
   );

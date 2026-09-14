@@ -4,7 +4,7 @@ import { CaretDown, Check } from '@phosphor-icons/react';
 import type { Mode, Provider } from '../../shared/types';
 import { settle } from '../lib/motion';
 
-const LABEL: Record<Provider, string> = { claude: 'Claude', codex: 'GPT' };
+const LABEL: Record<Provider, string> = { claude: 'Claude', codex: 'ChatGPT' };
 
 export function ModeSwitch({ mode, solo, onMode, onSolo }: { mode: Mode; solo: Provider; onMode: (m: Mode) => void; onSolo: (p: Provider) => void }) {
   const [menu, setMenu] = useState(false);
@@ -27,7 +27,7 @@ export function ModeSwitch({ mode, solo, onMode, onSolo }: { mode: Mode; solo: P
       <div role="group" aria-label="Reply mode" className="relative flex rounded-[12px] p-[3px]" style={{ background: 'var(--line)' }}>
         {items.map((it) => (
           <button key={it.id} aria-pressed={mode === it.id} {...(it.id === 'solo' ? { 'aria-haspopup': 'menu' as const, 'aria-expanded': menu } : {})}
-            className="relative z-10 flex items-center gap-1 rounded-[9px] px-3 py-1 text-meta font-medium"
+            className="relative z-10 flex items-center gap-1 whitespace-nowrap rounded-[9px] px-3 py-1 text-meta font-medium"
             style={{ color: mode === it.id ? 'var(--ink)' : 'var(--ink-2)' }}
             onClick={() => { onMode(it.id); if (it.id === 'solo' && mode === 'solo') setMenu((m) => !m); else setMenu(false); }}>
             {mode === it.id && <motion.span layoutId="mode-pill" className="absolute inset-0 -z-10 rounded-[9px]" style={{ background: 'var(--panel-solid)', boxShadow: 'var(--shadow)' }} transition={settle} />}
@@ -42,7 +42,7 @@ export function ModeSwitch({ mode, solo, onMode, onSolo }: { mode: Mode; solo: P
           {(['claude', 'codex'] as Provider[]).map((p) => (
             <button key={p} role="menuitemradio" aria-checked={solo === p} className="flex w-full items-center justify-between rounded-[8px] px-2.5 py-1.5 text-left text-ui hover:bg-[var(--accent-soft)]"
               onClick={() => { onSolo(p); setMenu(false); }}>
-              <span>{p === 'claude' ? 'Claude' : 'GPT via Codex'}</span>
+              <span>{p === 'claude' ? 'Claude' : 'ChatGPT'}</span>
               {solo === p && <Check size={14} weight="bold" style={{ color: 'var(--accent)' }} />}
             </button>
           ))}

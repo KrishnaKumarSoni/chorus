@@ -1,6 +1,6 @@
 import type { Attachment, Turn } from '../../shared/types';
 
-export const PROVIDER_LABEL: Record<string, string> = { claude: 'Claude', codex: 'GPT (Codex)' };
+export const PROVIDER_LABEL: Record<string, string> = { claude: 'Claude', codex: 'ChatGPT' };
 
 export function authorLabel(turn: Turn): string {
   if (turn.role === 'user') return 'User';
