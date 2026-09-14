@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 const here = typeof __dirname !== 'undefined' ? __dirname : path.dirname(fileURLToPath(import.meta.url));
 import { CHANNELS } from '../shared/api';
-import type { Attachment, IngestSource, Mode, SendRequest, Settings, TurnEvent } from '../shared/types';
+import type { Attachment, AuthEvent, IngestSource, Mode, Provider, SendRequest, Settings, TurnEvent } from '../shared/types';
 import { ConversationStore } from './store/conversationStore';
 import { SettingsStore } from './store/settingsStore';
 import { CapabilityCache } from './store/capabilityCache';
@@ -13,6 +13,7 @@ import { AttachmentService } from './attachments/service';
 import { ClaudeAdapter } from './providers/claude';
 import { CodexAdapter } from './providers/codex';
 import { Orchestrator } from './orchestrator/orchestrator';
+import { AuthService } from './auth/authService';
 import type { Adapter } from './providers/types';
 import type { ProviderStatus } from '../shared/types';
 
@@ -126,6 +127,18 @@ async function boot() {
     }
     return undefined;
   }
+
+  const auth = new AuthService((e: AuthEvent) => win?.webContents.send(CHANNELS.authEvent, e));
+  ipcMain.handle(CHANNELS.authStart, (_e, provider: Provider) => auth.start(provider));
+  ipcMain.handle(CHANNELS.authCancel, (_e, provider: Provider) => auth.cancel(provider));
+  ipcMain.handle(CHANNELS.authManual, (_e, provider: Provider, input: string) => {
+    if (provider !== 'claude') throw new Error('Only the Claude sign-in accepts a pasted link.');
+    return auth.completeClaudeManual(input);
+  });
+  ipcMain.handle(CHANNELS.authSignOut, async (_e, provider: Provider) => {
+    await auth.signOut(provider);
+    await providerStatus(true);
+  });
 
   ipcMain.handle(CHANNELS.settingsGet, () => settings.get());
   ipcMain.handle(CHANNELS.settingsSet, (_e, patch: Partial<Settings>) => settings.set(patch));

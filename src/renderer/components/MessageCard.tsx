@@ -8,7 +8,6 @@ import { AttachmentChip } from './AttachmentChip';
 import { settle } from '../lib/motion';
 
 const NAME = { claude: 'Claude', codex: 'GPT via Codex' } as const;
-const LOGIN = { claude: 'claude login', codex: 'codex login' } as const;
 
 export function UserCard({ turn }: { turn: Turn }) {
   return (
@@ -52,7 +51,7 @@ export function MessageCard({ turn, emphasis }: { turn: Turn; emphasis?: boolean
             <span className="selectable">{turn.error}</span>
           </div>
           <div className="mt-2 flex items-center gap-2 pl-6" style={{ color: 'var(--ink-2)' }}>
-            <span>{authError ? <>Sign in again with <code className="mono">{LOGIN[p]}</code> in a terminal, then re-check providers.</> : 'Check the provider in Settings, then send again.'}</span>
+            <span>{authError ? `Your ${NAME[p]} session has expired. Sign in again from Settings, then send this message again.` : 'Check the provider in Settings, then send again.'}</span>
             <button className="btn text-caption" onClick={() => setSettingsOpen(true)}>Open Settings</button>
           </div>
         </div>

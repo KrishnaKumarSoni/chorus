@@ -1,4 +1,4 @@
-import type { Attachment, Conversation, ConversationSummary, IngestSource, Mode, ProviderStatus, SendRequest, Settings, TurnEvent } from './types';
+import type { Attachment, AuthEvent, Conversation, ConversationSummary, IngestSource, Mode, Provider, ProviderStatus, SendRequest, Settings, TurnEvent } from './types';
 
 /** The bridge exposed to the renderer as `window.chorus`. */
 export interface ChorusApi {
@@ -31,7 +31,16 @@ export interface ChorusApi {
   providers: {
     status(refresh?: boolean): Promise<ProviderStatus[]>;
   };
+  auth: {
+    /** Opens the provider's own consent page in the browser and finishes the flow in-app. */
+    start(provider: Provider): Promise<void>;
+    cancel(provider: Provider): Promise<void>;
+    /** Fallback for when the browser cannot reach the loopback listener. */
+    completeManual(provider: Provider, input: string): Promise<void>;
+    signOut(provider: Provider): Promise<void>;
+  };
   onTurnEvent(listener: (e: TurnEvent) => void): () => void;
+  onAuthEvent(listener: (e: AuthEvent) => void): () => void;
 }
 
 export const CHANNELS = {
@@ -41,5 +50,6 @@ export const CHANNELS = {
   attIngest: 'att:ingest', attPick: 'att:pick', attPreview: 'att:preview',
   settingsGet: 'settings:get', settingsSet: 'settings:set',
   providersStatus: 'providers:status',
-  turnEvent: 'turn:event',
+  authStart: 'auth:start', authCancel: 'auth:cancel', authManual: 'auth:manual', authSignOut: 'auth:signout',
+  turnEvent: 'turn:event', authEvent: 'auth:event',
 } as const;

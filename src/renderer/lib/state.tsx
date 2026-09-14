@@ -1,7 +1,16 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import type { Attachment, Conversation, ConversationSummary, IngestSource, Mode, ProviderStatus, Settings, Turn, TurnEvent } from '../../shared/types';
+import type { Attachment, AuthEvent, Conversation, ConversationSummary, IngestSource, Mode, Provider, ProviderStatus, Settings, Turn, TurnEvent } from '../../shared/types';
 
 export interface Toast { id: number; text: string; kind: 'info' | 'error' }
+
+/** Per-provider sign-in progress shown in Settings. */
+export interface AuthProgress {
+  phase: 'idle' | 'awaiting-browser' | 'exchanging' | 'error';
+  url?: string;
+  message?: string;
+}
+
+const IDLE_AUTH: Record<Provider, AuthProgress> = { claude: { phase: 'idle' }, codex: { phase: 'idle' } };
 
 interface State {
   conversations: ConversationSummary[];
@@ -11,6 +20,7 @@ interface State {
   busy: boolean;
   toasts: Toast[];
   settingsOpen: boolean;
+  auth: Record<Provider, AuthProgress>;
 }
 
 interface Actions {
@@ -29,12 +39,16 @@ interface Actions {
   toast(text: string, kind?: Toast['kind']): void;
   dismissToast(id: number): void;
   setSettingsOpen(open: boolean): void;
+  signIn(provider: Provider): Promise<void>;
+  cancelSignIn(provider: Provider): Promise<void>;
+  completeSignInManually(provider: Provider, input: string): Promise<void>;
+  signOut(provider: Provider): Promise<void>;
 }
 
 const Ctx = createContext<(State & Actions) | undefined>(undefined);
 
 export function ChorusProvider({ children }: { children: React.ReactNode }) {
-  const [state, setState] = useState<State>({ conversations: [], statuses: [], busy: false, toasts: [], settingsOpen: false });
+  const [state, setState] = useState<State>({ conversations: [], statuses: [], busy: false, toasts: [], settingsOpen: false, auth: IDLE_AUTH });
   const currentId = useRef<string | undefined>(undefined);
   const api = window.chorus;
 
@@ -112,11 +126,70 @@ export function ChorusProvider({ children }: { children: React.ReactNode }) {
     });
   }, [api, refreshList, reloadCurrent]);
 
+  const setAuth = useCallback((provider: Provider, progress: AuthProgress) => {
+    setState((s) => ({ ...s, auth: { ...s.auth, [provider]: progress } }));
+  }, []);
+
+  useEffect(() => {
+    return api.onAuthEvent((e: AuthEvent) => {
+      switch (e.phase) {
+        case 'awaiting-browser':
+          setAuth(e.provider, { phase: 'awaiting-browser', url: e.url });
+          break;
+        case 'exchanging':
+          setAuth(e.provider, { phase: 'exchanging' });
+          break;
+        case 'cancelled':
+          setAuth(e.provider, { phase: 'idle' });
+          break;
+        case 'error':
+          setAuth(e.provider, { phase: 'error', message: e.message });
+          toast(e.message, 'error');
+          break;
+        case 'done':
+          setAuth(e.provider, { phase: 'idle' });
+          toast(`Signed in to ${e.provider === 'claude' ? 'Claude' : 'GPT via Codex'}.`);
+          // The provider can do more now, so re-probe and pick up any models it just exposed.
+          api.providers
+            .status(true)
+            .then(async (statuses) => {
+              const settings = await api.settings.get();
+              setState((s) => ({ ...s, statuses, settings }));
+            })
+            .catch((err) => toast((err as Error).message, 'error'));
+          break;
+      }
+    });
+  }, [api, setAuth, toast]);
+
   const actions: Actions = useMemo(
     () => ({
       refreshList,
       open,
       toast,
+      async signIn(provider) {
+        setAuth(provider, { phase: 'awaiting-browser' });
+        try {
+          await api.auth.start(provider);
+        } catch (e) {
+          setAuth(provider, { phase: 'error', message: (e as Error).message });
+          toast((e as Error).message, 'error');
+        }
+      },
+      async cancelSignIn(provider) {
+        await api.auth.cancel(provider);
+        setAuth(provider, { phase: 'idle' });
+      },
+      async completeSignInManually(provider, input) {
+        setAuth(provider, { phase: 'exchanging' });
+        await api.auth.completeManual(provider, input);
+      },
+      async signOut(provider) {
+        await api.auth.signOut(provider);
+        const statuses = await api.providers.status();
+        setState((s) => ({ ...s, statuses }));
+        toast(`Signed out of ${provider === 'claude' ? 'Claude' : 'GPT via Codex'}.`);
+      },
       dismissToast(id) {
         setState((s) => ({ ...s, toasts: s.toasts.filter((t) => t.id !== id) }));
       },
@@ -176,7 +249,7 @@ export function ChorusProvider({ children }: { children: React.ReactNode }) {
         setState((s) => ({ ...s, settingsOpen: open }));
       },
     }),
-    [api, open, refreshList, reloadCurrent, toast, state.settings?.defaultMode],
+    [api, open, refreshList, reloadCurrent, toast, setAuth, state.settings?.defaultMode],
   );
 
   return <Ctx.Provider value={{ ...state, ...actions }}>{children}</Ctx.Provider>;

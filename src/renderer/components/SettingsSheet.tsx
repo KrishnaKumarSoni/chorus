@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
-import { X, ArrowsClockwise } from '@phosphor-icons/react';
+import { X, ArrowsClockwise, SignIn, ArrowSquareOut } from '@phosphor-icons/react';
 import { useChorus } from '../lib/state';
 import type { Effort, Mode, Provider, Settings } from '../../shared/types';
 import { settle } from '../lib/motion';
@@ -10,7 +10,8 @@ const EFFORT_LABEL: Record<Effort, string> = { low: 'Low', medium: 'Medium', hig
 const PROVIDER_LABEL: Record<Provider, string> = { claude: 'Claude', codex: 'GPT via Codex' };
 
 export function SettingsSheet({ onClose }: { onClose: () => void }) {
-  const { settings, statuses, saveSettings, refreshStatus } = useChorus();
+  const { settings, statuses, saveSettings, refreshStatus, auth, signIn, cancelSignIn, completeSignInManually, signOut } = useChorus();
+  const [paste, setPaste] = useState('');
   const [draft, setDraft] = useState<Settings | undefined>(settings);
   const [refreshing, setRefreshing] = useState(false);
   const closeBtn = useRef<HTMLButtonElement>(null);
@@ -64,6 +65,57 @@ export function SettingsSheet({ onClose }: { onClose: () => void }) {
                   <span className="ml-auto text-caption font-semibold" style={{ color: st?.ok ? 'var(--accent)' : 'var(--danger)' }}>{st ? (st.ok ? 'Ready' : 'Needs sign-in') : 'Checking'}</span>
                 </div>
                 <p className="hint mt-1 min-h-[32px]">{st?.detail ?? 'Checking…'}</p>
+
+                {(() => {
+                  const a = auth[p];
+                  if (a.phase === 'awaiting-browser' || a.phase === 'exchanging') {
+                    return (
+                      <div className="mt-1 rounded-[10px] p-2.5" style={{ background: 'var(--accent-soft)' }}>
+                        <p className="text-meta" style={{ color: 'var(--ink-2)' }}>
+                          {a.phase === 'exchanging' ? 'Finishing up…' : 'Waiting for you to approve it in your browser…'}
+                        </p>
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          {a.url && (
+                            <a className="btn text-caption" href={a.url} target="_blank" rel="noreferrer">
+                              <ArrowSquareOut size={12} /> Open the page again
+                            </a>
+                          )}
+                          <button className="btn btn-ghost text-caption" onClick={() => cancelSignIn(p)}>Cancel</button>
+                        </div>
+                        {p === 'claude' && a.phase === 'awaiting-browser' && (
+                          <div className="mt-2">
+                            <label className="label text-caption" htmlFor="paste-redirect">Browser on another machine? Paste the link it landed on.</label>
+                            <div className="flex gap-1.5">
+                              <input id="paste-redirect" className="field mono text-caption" value={paste} onChange={(e) => setPaste(e.target.value)} placeholder="http://localhost:53692/callback?…" />
+                              <button className="btn text-caption" disabled={!paste.trim()}
+                                onClick={async () => {
+                                  try {
+                                    await completeSignInManually(p, paste);
+                                    setPaste('');
+                                  } catch {
+                                    /* the toast already explains */
+                                  }
+                                }}>Finish</button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  }
+                  return (
+                    <div className="mt-1 flex items-center gap-2">
+                      {st?.ok ? (
+                        <button className="btn text-caption" onClick={() => signOut(p)}>Sign out</button>
+                      ) : (
+                        <button className="btn btn-primary text-caption" onClick={() => signIn(p)}>
+                          <SignIn size={13} weight="bold" /> Sign in to {PROVIDER_LABEL[p]}
+                        </button>
+                      )}
+                      {a.phase === 'error' && <span className="text-caption" style={{ color: 'var(--danger)' }}>That did not go through</span>}
+                    </div>
+                  );
+                })()}
+
                 <label className="label mt-3" htmlFor={`model-${p}`}>Model</label>
                 {models.length ? (
                   <select id={`model-${p}`} className="field" value={draft.models[p]} onChange={(e) => commit({ models: { [p]: e.target.value } as Settings['models'] })}>
@@ -107,7 +159,7 @@ export function SettingsSheet({ onClose }: { onClose: () => void }) {
           <button className="btn text-meta" disabled={refreshing} onClick={async () => { setRefreshing(true); try { await refreshStatus(); } finally { setRefreshing(false); } }}>
             <ArrowsClockwise size={14} className={refreshing ? 'animate-spin' : ''} /> Re-check providers
           </button>
-          <p className="hint">Signed-in via the Claude Code and Codex CLIs. No keys are stored here.</p>
+          <p className="hint">Sign-in happens on the provider's own page in your browser. Chorus keeps the session, never your password.</p>
         </div>
       </motion.div>
     </motion.div>

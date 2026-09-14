@@ -1,7 +1,7 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import { CHANNELS } from '../shared/api';
 import type { ChorusApi } from '../shared/api';
-import type { TurnEvent } from '../shared/types';
+import type { AuthEvent, TurnEvent } from '../shared/types';
 
 const api: ChorusApi = {
   conversations: {
@@ -37,10 +37,21 @@ const api: ChorusApi = {
   providers: {
     status: (refresh) => ipcRenderer.invoke(CHANNELS.providersStatus, refresh),
   },
+  auth: {
+    start: (provider) => ipcRenderer.invoke(CHANNELS.authStart, provider),
+    cancel: (provider) => ipcRenderer.invoke(CHANNELS.authCancel, provider),
+    completeManual: (provider, input) => ipcRenderer.invoke(CHANNELS.authManual, provider, input),
+    signOut: (provider) => ipcRenderer.invoke(CHANNELS.authSignOut, provider),
+  },
   onTurnEvent: (listener) => {
     const handler = (_: unknown, e: TurnEvent) => listener(e);
     ipcRenderer.on(CHANNELS.turnEvent, handler);
     return () => ipcRenderer.removeListener(CHANNELS.turnEvent, handler);
+  },
+  onAuthEvent: (listener) => {
+    const handler = (_: unknown, e: AuthEvent) => listener(e);
+    ipcRenderer.on(CHANNELS.authEvent, handler);
+    return () => ipcRenderer.removeListener(CHANNELS.authEvent, handler);
   },
 };
 

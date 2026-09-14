@@ -137,6 +137,14 @@ export type TurnEvent =
   | { type: 'exchange-done'; conversationId: string; exchangeId: string }
   | { type: 'conversation-updated'; conversationId: string };
 
+/** Progress of an in-app provider sign-in, streamed from main to renderer. */
+export type AuthEvent =
+  | { provider: Provider; phase: 'awaiting-browser'; url: string }
+  | { provider: Provider; phase: 'exchanging' }
+  | { provider: Provider; phase: 'done' }
+  | { provider: Provider; phase: 'error'; message: string }
+  | { provider: Provider; phase: 'cancelled' };
+
 export interface SendRequest {
   conversationId: string;
   text: string;
