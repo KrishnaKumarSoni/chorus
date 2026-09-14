@@ -88,8 +88,10 @@ interface Compaction {
 interface HarnessSession {
   id: string;                                // Claude session_id / Codex thread_id
   model: string;
-  syncedThroughTurnIndex: number;            // last transcript turn this session has seen
+  syncedThroughTurnIndex: number;            // highest transcript index shown (informational)
+  seenTurnIds: string[];                     // exact set of turns this session has seen, incl. its own replies
   referenceIds: string[];                    // conversation references it has seen
+  systemHash?: string;                       // system prompt the session was created with (Codex bakes it in)
   stale?: boolean;                           // forces a fresh packet next time
 }
 
@@ -122,15 +124,22 @@ Budget: `budget = floor(contextWindow * 0.80) − outputReserve`, where
 window; `contextWindow` is discovered (§6).
 
 Token estimation: `ceil(chars / 4)` for text; `1600` per image. Actual usage
-returned by the harness after each turn is stored and used to re-calibrate
-(ratio of actual/estimated, clamped 0.5–2.0, kept in capability cache).
+returned by the harness after a *fresh* packet of at least 10K estimated
+tokens re-calibrates the estimate (ratio of actual/estimated, clamped 0.5–2.0,
+smoothed, kept in the capability cache). Smaller packets are ignored because
+the harness's own fixed overhead (its system prompt and tools, ~30K on Codex)
+would dominate the ratio.
 
 Two packet shapes:
 
-**Resume packet** (session exists, not stale, model unchanged):
+**Resume packet** (session exists, not stale, model unchanged, and — for
+transports that bake the system prompt in at session start — system prompt
+unchanged):
 ```
-[catch-up]   turns with index > session.syncedThroughTurnIndex, excluding the
-             current user turn, rendered as a labelled transcript
+[catch-up]   every finished turn whose id is not in session.seenTurnIds,
+             excluding the current user turn, rendered as a labelled transcript
+             (an id set, not an index watermark: in Compare mode each
+             provider's own reply lands at a different index)
              ("### User", "### Claude (claude-opus-5)", "### GPT-5.5 (codex)")
 [new refs]   conversation references added since (extracted text / images)
 [current]    the user's new message text + its message-scoped attachments
@@ -155,8 +164,10 @@ it, each file is truncated proportionally with a visible
 `[... truncated: N of M characters shown ...]` marker, and the UI shows a
 warning badge on the reference.
 
-After a successful turn the adapter records `syncedThroughTurnIndex = index of
-the assistant turn it just produced` and the reference ids it saw. Because the
+After a successful turn the orchestrator records every turn id the packet
+contained plus the assistant turn it just produced, and the reference ids it
+saw. In later consensus rounds the current message is replaced by the round
+instruction (the user's text is already in the transcript). Because the
 other provider's reply is appended later with a higher index, it is delivered
 as catch-up on this provider's next turn. Removing a reference marks every
 session stale.
@@ -229,10 +240,17 @@ Images are `image` content blocks (base64). Text deltas come from
 are written to the capability cache — this is the runtime source of truth for
 the Claude context window. Models: `query.supportedModels()` once per launch.
 
-**CodexAdapter** — `new Codex()`; `startThread` / `resumeThread(id)` with
+**CodexAdapter** — runs with its own `CODEX_HOME` (`userData/codex-home`):
+`auth.json` is a symlink to the user's `~/.codex/auth.json` so sign-in and
+token refresh stay shared, `config.toml` carries only the model, and the
+user's global `AGENTS.md`, skills and MCP servers are deliberately absent
+(a live test showed them leaking into chat replies). `new Codex({env})`;
+`startThread` / `resumeThread(id)` with
 `{ model, modelReasoningEffort, sandboxMode: 'read-only', skipGitRepoCheck:
 true, workingDirectory: <per-conversation scratch dir>, webSearchMode: 'disabled'
-}`. Input is `UserInput[]` with `text` and `local_image` items. Deltas: from
+}`. The packet's system prompt is written to `AGENTS.md` in the
+per-conversation working directory together with a note that this is a chat,
+not a coding task. Input is `UserInput[]` with `text` and `local_image` items. Deltas: from
 `item.updated`/`item.completed` for `agent_message`. Usage from
 `turn.completed`. Models and context windows: `$CODEX_HOME/models_cache.json`
 (`slug`, `display_name`, `context_window`, `supported_reasoning_levels`,
@@ -286,7 +304,14 @@ design-taste-frontend and better-ui skills during implementation.
 - End-to-end smoke: launch the Electron app under Playwright, create a
   conversation, send a Solo message, and screenshot.
 
-## 11. Out of scope for this iteration
+## 11. Packaging
+
+`electron-builder --dir` produces `release/mac-arm64/Chorus.app`, unsigned,
+with `asar` disabled: both harness SDKs spawn bundled executables, and the
+Claude one cannot be spawned from inside an asar archive (`spawn ENOTDIR`).
+Node 22 is required to build (`.nvmrc`).
+
+## 12. Out of scope for this iteration
 
 RAG/retrieval over references, provider-native file uploads, more than two
 providers, multi-window, sync/cloud, auto-updates, code signing.
