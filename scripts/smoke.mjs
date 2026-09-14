@@ -49,7 +49,7 @@ if (send) {
 
   // Compare: Claude will show its auth error next to a live GPT reply
   await page.fill('textarea[aria-label="Message"]', 'Now the strongest counter-argument, in three sentences.');
-  await page.click('[role="radio"]:has-text("Compare")');
+  await page.click('[aria-label="Reply mode"] button:has-text("Compare")');
   await page.click('textarea[aria-label="Message"]');
   await page.keyboard.press('Enter');
   await page.waitForFunction(() => document.querySelectorAll('article').length >= 3, null, { timeout: 20000 });

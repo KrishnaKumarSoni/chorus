@@ -72,7 +72,7 @@ export function Composer() {
       <motion.div layout transition={settle} className="surface relative p-2.5" style={{ borderColor: dragging ? 'var(--accent)' : 'var(--line)' }}>
         <AnimatePresence>
           {dragging && (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-[var(--radius)] text-[13px] font-medium" style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-[var(--radius)] text-ui font-medium" style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>
               Drop to attach to this message
             </motion.div>
           )}
@@ -87,7 +87,7 @@ export function Composer() {
         <textarea ref={area} value={text} onChange={(e) => setText(e.target.value)} onKeyDown={onKey} rows={1}
           onPaste={(e) => { const files = [...e.clipboardData.files]; if (files.length) { e.preventDefault(); ingest(files); } }}
           placeholder={mode === 'solo' ? 'Message…' : mode === 'compare' ? 'Ask both models side by side…' : 'Ask both models to reach a consensus…'}
-          className="selectable w-full bg-transparent px-2 py-1.5 text-[14px] leading-[1.5] outline-none" aria-label="Message" />
+          className="selectable w-full bg-transparent px-2 py-1.5 text-body outline-none" aria-label="Message" />
         <div className="mt-1 flex items-center gap-2 px-1">
           <ModeSwitch mode={mode} solo={settings?.soloProvider ?? 'claude'} onMode={setMode} onSolo={(p) => saveSettings({ soloProvider: p })} />
           <button className="btn btn-ghost p-1.5" onClick={pick} aria-label="Attach files" title="Attach files" disabled={ingesting}><Paperclip size={16} /></button>
@@ -96,7 +96,7 @@ export function Composer() {
           {busy ? (
             <button className="btn btn-primary p-1.5" onClick={cancel} aria-label="Stop" style={{ background: 'var(--danger)' }}><Stop size={16} weight="fill" /></button>
           ) : (
-            <motion.button whileTap={{ scale: 0.94 }} className="btn btn-primary p-1.5" onClick={submit} aria-label="Send" disabled={!text.trim() && attachments.length === 0}><ArrowUp size={16} weight="bold" /></motion.button>
+            <motion.button whileTap={{ scale: 0.96 }} className="btn btn-primary p-1.5" onClick={submit} aria-label="Send" aria-disabled={!text.trim() && attachments.length === 0}><ArrowUp size={16} weight="bold" /></motion.button>
           )}
         </div>
       </motion.div>

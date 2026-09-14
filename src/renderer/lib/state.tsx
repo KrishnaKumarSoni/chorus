@@ -27,6 +27,7 @@ interface Actions {
   saveSettings(patch: Partial<Settings>): Promise<void>;
   refreshStatus(): Promise<void>;
   toast(text: string, kind?: Toast['kind']): void;
+  dismissToast(id: number): void;
   setSettingsOpen(open: boolean): void;
 }
 
@@ -40,7 +41,7 @@ export function ChorusProvider({ children }: { children: React.ReactNode }) {
   const toast = useCallback((text: string, kind: Toast['kind'] = 'info') => {
     const id = Date.now() + Math.random();
     setState((s) => ({ ...s, toasts: [...s.toasts, { id, text, kind }] }));
-    setTimeout(() => setState((s) => ({ ...s, toasts: s.toasts.filter((t) => t.id !== id) })), 5000);
+    if (kind === 'info') setTimeout(() => setState((s) => ({ ...s, toasts: s.toasts.filter((t) => t.id !== id) })), 5000);
   }, []);
 
   const refreshList = useCallback(async () => {
@@ -116,6 +117,9 @@ export function ChorusProvider({ children }: { children: React.ReactNode }) {
       refreshList,
       open,
       toast,
+      dismissToast(id) {
+        setState((s) => ({ ...s, toasts: s.toasts.filter((t) => t.id !== id) }));
+      },
       async create(mode) {
         const c = await api.conversations.create(mode ?? state.settings?.defaultMode ?? 'solo');
         await refreshList();

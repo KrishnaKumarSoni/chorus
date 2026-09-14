@@ -39,18 +39,18 @@ export function Thread() {
     <div className="flex min-h-0 flex-1 flex-col">
       <header className="drag-region flex items-center gap-3 px-6 pt-[42px] pb-3">
         {editing ? (
-          <input autoFocus className="field no-drag max-w-[480px] text-[15px] font-semibold" value={title} onChange={(e) => setTitle(e.target.value)}
+          <input autoFocus aria-label="Conversation title" className="field no-drag max-w-[480px] text-title font-semibold" value={title} onChange={(e) => setTitle(e.target.value)}
             onBlur={() => { setEditing(false); if (title.trim() && title !== current?.title) rename(title.trim()); }}
             onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); if (e.key === 'Escape') { setTitle(current?.title ?? ''); setEditing(false); } }} />
         ) : (
-          <button className="no-drag display truncate text-left text-[15px] font-semibold" onClick={() => setEditing(true)} title="Rename">{current?.title}</button>
+          <button className="no-drag display truncate rounded-[6px] px-1 text-left text-title font-semibold hover:bg-[var(--line)]" onClick={() => setEditing(true)} aria-label={`Rename conversation: ${current?.title}`} title="Click to rename">{current?.title}</button>
         )}
-        <span className="mono ml-auto text-[11px]" style={{ color: 'var(--muted)' }}>{current?.turns.length ?? 0} turns{current?.compactions.length ? ` · ${current.compactions.length} compaction${current.compactions.length > 1 ? 's' : ''}` : ''}</span>
+        <span className="mono ml-auto text-caption" style={{ color: 'var(--muted)' }}>{current?.turns.length ?? 0} turns{current?.compactions.length ? ` · ${current.compactions.length} compaction${current.compactions.length > 1 ? 's' : ''}` : ''}</span>
       </header>
       <div ref={scroller} onScroll={onScroll} className="scroll min-h-0 flex-1 px-6 pb-6">
         {exchanges.length === 0 && (
           <div className="flex h-full items-end pb-6">
-            <p className="max-w-[440px] text-[14px]" style={{ color: 'var(--ink-2)' }}>
+            <p className="max-w-[440px] text-body" style={{ color: 'var(--ink-2)' }}>
               Ask anything. Choose <b>Solo</b>, <b>Compare</b> or <b>Consensus</b> per message; add files to the context panel on the right so both models see the same material.
             </p>
           </div>
@@ -81,7 +81,7 @@ function Replies({ exchange }: { exchange: Exchange }) {
       {rounds.map((turns, i) =>
         turns.length === 0 ? null : (
           <div key={i}>
-            <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: i === 2 ? 'var(--accent)' : 'var(--muted)' }}>
+            <div className="mb-2 flex items-center gap-2 text-caption font-semibold uppercase tracking-[0.08em]" style={{ color: i === 2 ? 'var(--accent)' : 'var(--muted)' }}>
               <span className="h-px flex-1" style={{ background: 'var(--line-strong)' }} />
               {label[i]}
               <span className="h-px flex-1" style={{ background: 'var(--line-strong)' }} />
