@@ -16,6 +16,8 @@ export interface Packet {
   needsCompaction: boolean;
   /** Transcript index the session will have seen after this request succeeds. */
   syncedThroughTurnIndex: number;
+  /** Every turn the session will have seen after this request (prior turns + the current one). */
+  seenTurnIds: string[];
   referenceIds: string[];
   truncatedReferenceIds: string[];
   warnings: string[];
@@ -29,6 +31,8 @@ export interface BuildOptions {
   currentTurn: Turn;
   /** Extra instruction appended after the user's message (consensus rounds). */
   roundInstruction?: string;
+  /** Replace the current message entirely (later consensus rounds: the user's text is already in the transcript). */
+  messageOverride?: string;
   session?: HarnessSession;
   /** Whether the transport re-sends the system prompt on resume (Claude) or bakes it at session start (Codex). */
   resumeCarriesSystem: boolean;
@@ -80,8 +84,12 @@ function estimateBlocks(blocks: PacketBlock[], calibration: number): number {
   return n;
 }
 
-function messageBlocks(turn: Turn, readText: BuildOptions['readText'], roundInstruction?: string): PacketBlock[] {
+function messageBlocks(turn: Turn, readText: BuildOptions['readText'], roundInstruction?: string, override?: string): PacketBlock[] {
   const blocks: PacketBlock[] = [];
+  if (override !== undefined) {
+    blocks.push({ type: 'text', text: override });
+    return blocks;
+  }
   const attachments = turn.attachments ?? [];
   const texts = referenceTexts(attachments, readText);
   if (texts.length) {
@@ -102,7 +110,9 @@ export function buildPacket(opts: BuildOptions): Packet {
   const systemHash = hashString(system);
   const warnings: string[] = [];
 
-  const priorTurns = conv.turns.filter((t) => t.index < currentTurn.index && t.status !== 'streaming');
+  const priorTurns = conv.turns.filter((t) => t.id !== currentTurn.id && t.status !== 'streaming');
+  const seenAfter = [...priorTurns.map((t) => t.id), currentTurn.id];
+  const maxIndex = priorTurns.reduce((m, t) => Math.max(m, t.index), currentTurn.index);
 
   const canResume =
     !!session &&
@@ -111,7 +121,8 @@ export function buildPacket(opts: BuildOptions): Packet {
     (opts.resumeCarriesSystem || session.systemHash === systemHash);
 
   if (canResume && session) {
-    const catchUp = priorTurns.filter((t) => t.index > session.syncedThroughTurnIndex);
+    const seen = new Set(session.seenTurnIds);
+    const catchUp = priorTurns.filter((t) => !seen.has(t.id)).sort((a, b) => a.index - b.index);
     const newRefs = conv.references.filter((r) => !session.referenceIds.includes(r.id));
     const blocks: PacketBlock[] = [];
     if (catchUp.length) {
@@ -130,7 +141,7 @@ export function buildPacket(opts: BuildOptions): Packet {
       }
       for (const a of newRefs) if (isImage(a)) blocks.push({ type: 'image', attachment: a });
     }
-    blocks.push(...messageBlocks(currentTurn, readText, opts.roundInstruction));
+    blocks.push(...messageBlocks(currentTurn, readText, opts.roundInstruction, opts.messageOverride));
     const estimatedTokens = estimateBlocks(blocks, cal);
     if (estimatedTokens <= budget) {
       return {
@@ -140,7 +151,8 @@ export function buildPacket(opts: BuildOptions): Packet {
         estimatedTokens,
         budget,
         needsCompaction: false,
-        syncedThroughTurnIndex: currentTurn.index,
+        syncedThroughTurnIndex: maxIndex,
+        seenTurnIds: seenAfter,
         referenceIds: conv.references.map((r) => r.id),
         truncatedReferenceIds: truncated,
         warnings,
@@ -161,13 +173,13 @@ export function buildPacket(opts: BuildOptions): Packet {
   for (const a of conv.references) if (isImage(a)) blocks.push({ type: 'image', attachment: a });
 
   const latest = conv.compactions.length ? conv.compactions[conv.compactions.length - 1] : undefined;
-  const verbatim = latest ? priorTurns.filter((t) => t.index > latest.throughTurnIndex) : priorTurns;
+  const verbatim = (latest ? priorTurns.filter((t) => t.index > latest.throughTurnIndex) : priorTurns).sort((a, b) => a.index - b.index);
   const history: string[] = [];
   if (latest) history.push(`<compacted-history through-turn="${latest.throughTurnIndex}">\n${latest.summary}\n</compacted-history>`);
   if (verbatim.length) history.push(`<history>\n${renderTranscript(verbatim)}\n</history>`);
   if (history.length) blocks.push({ type: 'text', text: history.join('\n\n') });
 
-  blocks.push(...messageBlocks(currentTurn, readText, opts.roundInstruction));
+  blocks.push(...messageBlocks(currentTurn, readText, opts.roundInstruction, opts.messageOverride));
   const estimatedTokens = estimateBlocks(blocks, cal);
   const needsCompaction = estimatedTokens > budget && verbatim.length > 0;
   return {
@@ -177,7 +189,8 @@ export function buildPacket(opts: BuildOptions): Packet {
     estimatedTokens,
     budget,
     needsCompaction,
-    syncedThroughTurnIndex: currentTurn.index,
+    syncedThroughTurnIndex: maxIndex,
+    seenTurnIds: seenAfter,
     referenceIds: conv.references.map((r) => r.id),
     truncatedReferenceIds: truncated,
     warnings,

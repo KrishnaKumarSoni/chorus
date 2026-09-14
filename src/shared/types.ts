@@ -72,7 +72,10 @@ export interface Compaction {
 export interface HarnessSession {
   id: string;
   model: string;
+  /** Highest transcript index this session has been shown (informational). */
   syncedThroughTurnIndex: number;
+  /** Ids of every transcript turn this session has seen, including its own replies. */
+  seenTurnIds: string[];
   referenceIds: string[];
   /** Hash of the system prompt the session was created with (matters for transports that bake it in). */
   systemHash?: string;

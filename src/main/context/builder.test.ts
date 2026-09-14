@@ -33,6 +33,7 @@ describe('buildPacket', () => {
     expect(p.blocks[p.blocks.length - 1]).toEqual({ type: 'text', text: 'second' });
     expect(p.needsCompaction).toBe(false);
     expect(p.syncedThroughTurnIndex).toBe(2);
+    expect(p.seenTurnIds).toEqual(['t0', 't1', 't2']);
   });
 
   it('resumes with only the unseen turns as catch-up, including the other model', () => {
@@ -41,7 +42,7 @@ describe('buildPacket', () => {
     const t2 = mkTurn(2, 'assistant', 'a1 gpt', { author: { provider: 'codex', model: 'gpt-5.5' }, mode: 'compare' });
     const cur = mkTurn(3, 'user', 'q2');
     const conv = mkConv([t0, t1, t2, cur]);
-    const session = { id: 's', model: 'claude-opus-5', syncedThroughTurnIndex: 1, referenceIds: [] };
+    const session = { id: 's', model: 'claude-opus-5', syncedThroughTurnIndex: 1, seenTurnIds: ['t0', 't1'], referenceIds: [] };
     const p = buildPacket(base(conv, cur, { session }));
     expect(p.kind).toBe('resume');
     const text = p.blocks.map((b) => (b.type === 'text' ? b.text : '')).join('\n');
@@ -51,11 +52,27 @@ describe('buildPacket', () => {
     expect(text).not.toContain('q1');
   });
 
+  it('catches up on a reply that landed before its own (compare ordering) and supports message override', () => {
+    const t0 = mkTurn(0, 'user', 'q1');
+    const t1 = mkTurn(1, 'assistant', 'claude first', { author, mode: 'compare' });
+    const t2 = mkTurn(2, 'assistant', 'gpt second', { author: { provider: 'codex', model: 'gpt-5.5' }, mode: 'compare' });
+    const conv = mkConv([t0, t1, t2]);
+    // codex session saw t0 and its own t2, but not claude's t1 which has a lower index
+    const session = { id: 's', model: 'gpt-5.5', syncedThroughTurnIndex: 2, seenTurnIds: ['t0', 't2'], referenceIds: [] };
+    const p = buildPacket(base(conv, t0, { session, target: { provider: 'codex', model: 'gpt-5.5' }, messageOverride: 'Now critique.' }));
+    expect(p.kind).toBe('resume');
+    const text = p.blocks.map((b) => (b.type === 'text' ? b.text : '')).join('\n');
+    expect(text).toContain('claude first');
+    expect(text).not.toContain('gpt second');
+    expect(p.blocks[p.blocks.length - 1]).toEqual({ type: 'text', text: 'Now critique.' });
+    expect(p.seenTurnIds).toEqual(['t1', 't2', 't0']);
+  });
+
   it('sends no catch-up when the session is current', () => {
     const t0 = mkTurn(0, 'user', 'q1');
     const t1 = mkTurn(1, 'assistant', 'a1', { author });
     const cur = mkTurn(2, 'user', 'q2');
-    const p = buildPacket(base(mkConv([t0, t1, cur]), cur, { session: { id: 's', model: 'claude-opus-5', syncedThroughTurnIndex: 1, referenceIds: [] } }));
+    const p = buildPacket(base(mkConv([t0, t1, cur]), cur, { session: { id: 's', model: 'claude-opus-5', syncedThroughTurnIndex: 1, seenTurnIds: ['t0', 't1'], referenceIds: [] } }));
     expect(p.kind).toBe('resume');
     expect(p.blocks).toEqual([{ type: 'text', text: 'q2' }]);
   });
@@ -63,7 +80,7 @@ describe('buildPacket', () => {
   it('falls back to fresh when the session is stale, on another model, or system changed for a baked transport', () => {
     const cur = mkTurn(0, 'user', 'q');
     const conv = mkConv([cur]);
-    const s = { id: 's', model: 'claude-opus-5', syncedThroughTurnIndex: -1, referenceIds: [] };
+    const s = { id: 's', model: 'claude-opus-5', syncedThroughTurnIndex: -1, seenTurnIds: [], referenceIds: [] };
     expect(buildPacket(base(conv, cur, { session: { ...s, stale: true } })).kind).toBe('fresh');
     expect(buildPacket(base(conv, cur, { session: { ...s, model: 'claude-sonnet-5' } })).kind).toBe('fresh');
     const sys = buildSystemPrompt('Be terse.', '');
@@ -83,9 +100,9 @@ describe('buildPacket', () => {
     expect(fresh.blocks.some((b) => b.type === 'image' && b.attachment.id === 'r2')).toBe(true);
     expect(fresh.referenceIds).toEqual(['r1', 'r2']);
 
-    const seen = buildPacket(base(conv, cur, { session: { id: 's', model: 'claude-opus-5', syncedThroughTurnIndex: -1, referenceIds: ['r1', 'r2'] } }));
+    const seen = buildPacket(base(conv, cur, { session: { id: 's', model: 'claude-opus-5', syncedThroughTurnIndex: -1, seenTurnIds: [], referenceIds: ['r1', 'r2'] } }));
     expect(seen.blocks).toEqual([{ type: 'text', text: 'which strategy?' }]);
-    const partial = buildPacket(base(conv, cur, { session: { id: 's', model: 'claude-opus-5', syncedThroughTurnIndex: -1, referenceIds: ['r1'] } }));
+    const partial = buildPacket(base(conv, cur, { session: { id: 's', model: 'claude-opus-5', syncedThroughTurnIndex: -1, seenTurnIds: [], referenceIds: ['r1'] } }));
     expect(partial.blocks.map((b) => b.type)).toEqual(['image', 'text']);
   });
 
