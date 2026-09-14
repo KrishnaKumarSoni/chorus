@@ -6,11 +6,14 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 const send = process.argv.includes('--send');
+const packaged = process.argv.includes('--packaged');
 const userData = mkdtempSync(path.join(tmpdir(), 'chorus-smoke-'));
 const shots = path.resolve('test-results');
 const env = { ...process.env, CHORUS_USER_DATA: userData };
 for (const k of Object.keys(env)) if (k === 'CLAUDECODE' || k.startsWith('CLAUDE_CODE_')) delete env[k];
-const app = await electron.launch({ args: ['out/main/index.js'], env });
+const app = packaged
+  ? await electron.launch({ executablePath: path.resolve('release/mac-arm64/Chorus.app/Contents/MacOS/Chorus'), args: [], env })
+  : await electron.launch({ args: ['out/main/index.js'], env });
 app.process().stderr?.on('data', (d) => process.stdout.write(`[main:err] ${d}`));
 app.process().stdout?.on('data', (d) => process.stdout.write(`[main] ${d}`));
 const page = await app.firstWindow();

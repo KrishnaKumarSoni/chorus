@@ -58,12 +58,6 @@
       "out/**/*",
       "package.json"
     ],
-    "asarUnpack": [
-      "node_modules/@anthropic-ai/claude-agent-sdk/**",
-      "node_modules/@openai/codex/**",
-      "node_modules/@openai/codex-darwin-arm64/**",
-      "node_modules/@openai/codex-sdk/**"
-    ],
     "mac": {
       "category": "public.app-category.productivity",
       "target": [
@@ -71,6 +65,7 @@
       ],
       "darkModeSupport": true
     },
-    "npmRebuild": false
+    "npmRebuild": false,
+    "asar": false
   }
 }
