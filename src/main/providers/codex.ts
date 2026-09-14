@@ -67,7 +67,7 @@ export class CodexAdapter implements Adapter {
       ok = true;
       detail = models.length ? `${models.length} models from the Codex catalog` : 'Signed in; no model catalog yet';
     } catch {
-      detail = 'Not signed in. Run `codex login` in a terminal.';
+      detail = 'Not signed in yet. Use the Sign in button below.';
     }
     return { provider: 'codex', ok, detail, models };
   }

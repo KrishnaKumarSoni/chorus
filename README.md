@@ -22,10 +22,26 @@ Design notes live in `docs/superpowers/specs/2026-09-14-chorus-design.md`.
 - Budgets are derived from the discovered context window (Claude reports it per result; Codex publishes a model catalog with `context_window`). Nothing is hard-coded.
 - If a fresh packet exceeds the budget, older turns are summarised with a fixed compaction prompt that preserves instructions, facts, decisions, referenced files, and unresolved disagreements. The summary is stored in the transcript and shown in the context panel.
 
+## Signing in
+
+Open Settings (⌘,) and press **Sign in** on each provider card. The provider's
+own page opens in your browser; approve it there and the app picks the session
+up on its own, flipping the card from *Needs sign-in* to *Ready*. Nothing is
+typed into Chorus, and the app never sees your password.
+
+- **Claude** uses the desktop OAuth flow (authorization code with PKCE on a
+  loopback redirect) and keeps the session in the same place the Claude Code
+  CLI does, so the two stay in sync and the session renews itself. If your
+  browser runs on another machine, paste the link it landed on into the
+  fallback field on the card.
+- **GPT** hands off to `codex login`, which does its own exchange.
+
+**Sign out** on a card forgets that provider's session.
+
 ## Requirements
 
 - macOS, Node 22 (`nvm use` reads `.nvmrc`)
-- Signed in to the Claude Code CLI (`claude login`) and Codex CLI (`codex login`). Chorus never handles credentials itself.
+- A Claude subscription and a ChatGPT account, plus the Codex CLI on your PATH.
 
 ## Run
 

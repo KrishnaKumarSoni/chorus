@@ -40,7 +40,7 @@ export class ClaudeAdapter implements Adapter {
     if (refresh || this.authOk === undefined) this.authOk = await this.probeAuth();
     return this.authOk
       ? { provider: 'claude', ok: true, detail: `${models.length} models available to this account`, models }
-      : { provider: 'claude', ok: false, detail: 'Not signed in. Run `claude login` in a terminal, then re-check.', models };
+      : { provider: 'claude', ok: false, detail: 'Not signed in yet. Use the Sign in button below.', models };
   }
 
   private async probeAuth(): Promise<boolean> {
