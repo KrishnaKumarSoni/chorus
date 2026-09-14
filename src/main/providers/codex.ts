@@ -1,20 +1,64 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import { Codex, type ThreadEvent, type ThreadOptions, type UserInput } from '@openai/codex-sdk';
 import type { Effort, ProviderStatus } from '../../shared/types';
-import { readCodexModels, codexHome } from './codexCatalog';
+import { readCodexModels, codexHome, readConfiguredModel } from './codexCatalog';
 import { ProviderError, cleanEnv, type Adapter, type RunEvents, type RunRequest, type RunResult } from './types';
 
 function mapEffort(e: Effort): ThreadOptions['modelReasoningEffort'] {
   return e === 'max' ? 'xhigh' : e;
 }
 
+/**
+ * Chorus runs Codex from its own CODEX_HOME so the user's global AGENTS.md,
+ * skills and MCP servers do not leak into chat replies. Only the auth file is
+ * shared (symlinked), so token refreshes stay in one place.
+ */
+export async function prepareCodexHome(appHome: string): Promise<string> {
+  await fs.mkdir(appHome, { recursive: true });
+  const userHome = codexHome();
+  const link = path.join(appHome, 'auth.json');
+  try {
+    await fs.lstat(link);
+  } catch {
+    try {
+      await fs.symlink(path.join(userHome, 'auth.json'), link);
+    } catch {
+      /* not signed in yet; status() reports it */
+    }
+  }
+  const model = await readConfiguredModel(userHome);
+  const lines = ['# Managed by Chorus. Edit ~/.codex/config.toml for your own Codex setup.', model ? `model = "${model}"` : '', 'notify = []', ''];
+  await fs.writeFile(path.join(appHome, 'config.toml'), lines.filter((l) => l !== undefined).join('\n'), 'utf8');
+  // Models catalog: reuse the user's cache when present so context windows are known before the first turn.
+  try {
+    await fs.copyFile(path.join(userHome, 'models_cache.json'), path.join(appHome, 'models_cache.json'));
+  } catch {
+    /* no cache yet */
+  }
+  return appHome;
+}
+
 export class CodexAdapter implements Adapter {
   readonly provider = 'codex' as const;
   readonly resumeCarriesSystem = false;
-  private codex = new Codex({ env: cleanEnv() });
+  private codex: Codex;
+  private home: string;
+
+  constructor(appHome = path.join(os.homedir(), '.chorus', 'codex-home')) {
+    this.home = appHome;
+    this.codex = new Codex({ env: { ...cleanEnv(), CODEX_HOME: appHome } });
+  }
+
+  private ready?: Promise<string>;
+  private ensureHome(): Promise<string> {
+    if (!this.ready) this.ready = prepareCodexHome(this.home);
+    return this.ready;
+  }
 
   async status(): Promise<ProviderStatus> {
+    await this.ensureHome();
     const models = await readCodexModels();
     let ok = false;
     let detail = '';
@@ -29,9 +73,10 @@ export class CodexAdapter implements Adapter {
   }
 
   async run(req: RunRequest, events: RunEvents): Promise<RunResult> {
+    await this.ensureHome();
     await fs.mkdir(req.workDir, { recursive: true });
     // Codex has no per-request system prompt; project instructions come from AGENTS.md in the working directory.
-    await fs.writeFile(path.join(req.workDir, 'AGENTS.md'), req.packet.system, 'utf8');
+    await fs.writeFile(path.join(req.workDir, 'AGENTS.md'), `${req.packet.system}\n\n## Operating notes\nThis is a chat, not a coding task. Answer directly from the conversation and the provided material; do not run shell commands or read files unless the user explicitly asks you to.\n`, 'utf8');
 
     const opts: ThreadOptions = {
       model: req.model,

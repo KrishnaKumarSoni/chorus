@@ -144,7 +144,8 @@ export class Orchestrator {
       try {
         const result = await adapter.run(req, events);
         if (result.contextWindow) await caps.discovered(spec.provider, model, result.contextWindow, result.maxOutputTokens);
-        if (packet.kind === 'fresh' && result.usage) {
+        // Harness overhead (its own system prompt and tools) dominates small requests; only large packets teach us anything.
+        if (packet.kind === 'fresh' && result.usage && packet.estimatedTokens >= 10_000) {
           const actual = result.usage.input + (result.usage.cachedInput ?? 0);
           await caps.observe(spec.provider, model, packet.estimatedTokens + estimateTextTokens(packet.system), actual);
         }
@@ -157,7 +158,8 @@ export class Orchestrator {
         emit({ type: 'turn-done', conversationId, turn: done });
         return done;
       } catch (e) {
-        lastError = (e as Error).message || String(e);
+        const err = e as Error & { hint?: string };
+        lastError = err.hint ? `${err.message} ${err.hint}` : err.message || String(e);
         if (signal.aborted) {
           const cancelled = await store.patchTurn(conversationId, turn.id, { text, status: 'cancelled', activity: turn.activity });
           emit({ type: 'turn-done', conversationId, turn: cancelled });
@@ -171,8 +173,7 @@ export class Orchestrator {
         break;
       }
     }
-    const hint = (lastError.match(/Run `[^`]+`[^.]*\./) ?? [])[0];
-    const failed = await store.patchTurn(conversationId, turn.id, { text, status: 'error', error: hint ? `${lastError}` : lastError, activity: turn.activity });
+    const failed = await store.patchTurn(conversationId, turn.id, { text, status: 'error', error: lastError, activity: turn.activity });
     emit({ type: 'turn-done', conversationId, turn: failed });
     throw new Error(lastError);
   }

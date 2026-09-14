@@ -9,7 +9,9 @@
     "start": "electron-vite preview",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "dist": "electron-vite build && electron-builder --dir"
+    "dist": "electron-vite build && electron-builder --dir",
+    "smoke": "node scripts/smoke.mjs",
+    "smoke:live": "node scripts/smoke.mjs --send"
   },
   "keywords": [],
   "author": "",
@@ -18,14 +20,19 @@
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.270",
     "@openai/codex-sdk": "^0.154.0",
+    "@phosphor-icons/react": "^2.1.10",
+    "framer-motion": "^13.2.0",
     "mammoth": "^1.12.3",
     "pdf-parse": "^1.1.1",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",
+    "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^26.5.1",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
@@ -34,10 +41,36 @@
     "electron-builder": "^26.15.3",
     "electron-vite": "^3.1.0",
     "playwright": "^1.63.0",
+    "tailwindcss": "^4.3.3",
     "typescript": "^7.0.2",
     "vite": "^6.4.3",
     "vitest": "^4.1.11"
   },
   "type": "module",
-  "productName": "Chorus"
+  "productName": "Chorus",
+  "build": {
+    "appId": "com.krishna.chorus",
+    "productName": "Chorus",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "out/**/*",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "node_modules/@anthropic-ai/claude-agent-sdk/**",
+      "node_modules/@openai/codex/**",
+      "node_modules/@openai/codex-darwin-arm64/**",
+      "node_modules/@openai/codex-sdk/**"
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": [
+        "dir"
+      ],
+      "darkModeSupport": true
+    },
+    "npmRebuild": false
+  }
 }
