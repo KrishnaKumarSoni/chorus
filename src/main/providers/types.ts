@@ -32,7 +32,7 @@ export interface Adapter {
   readonly provider: Provider;
   /** True when the transport re-sends the system prompt on every resumed request. */
   readonly resumeCarriesSystem: boolean;
-  status(): Promise<ProviderStatus>;
+  status(refresh?: boolean): Promise<ProviderStatus>;
   run(req: RunRequest, events: RunEvents): Promise<RunResult>;
 }
 

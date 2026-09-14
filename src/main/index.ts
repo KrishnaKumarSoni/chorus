@@ -61,7 +61,7 @@ async function boot() {
 
   const providerStatus = async (refresh = false): Promise<ProviderStatus[]> => {
     if (statusCache && !refresh) return statusCache;
-    const list = await Promise.all(Object.values(adapters).map((a) => a.status().catch((e) => ({ provider: a.provider, ok: false, detail: (e as Error).message, models: [] }))));
+    const list = await Promise.all(Object.values(adapters).map((a) => a.status(refresh).catch((e) => ({ provider: a.provider, ok: false, detail: (e as Error).message, models: [] }))));
     // Seed capability windows from catalogs and pick defaults for unset models.
     const patch: Partial<Settings> = { models: { ...settings.get().models } };
     for (const s of list) {

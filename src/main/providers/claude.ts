@@ -24,13 +24,34 @@ export class ClaudeAdapter implements Adapter {
     };
   }
 
-  async status(): Promise<ProviderStatus> {
+  private authOk?: boolean;
+
+  /**
+   * Listing models works even when the login has expired, so the status check
+   * also sends one tiny request. Cached per launch; "Re-check providers" clears it.
+   */
+  async status(refresh = false): Promise<ProviderStatus> {
+    let models: ModelDescriptor[] = [];
     try {
-      const models = await this.listModels();
-      return { provider: 'claude', ok: true, detail: `${models.length} models available to this account`, models };
+      models = await this.listModels();
     } catch (e) {
-      const msg = (e as Error).message;
-      return { provider: 'claude', ok: false, detail: AUTH_RE.test(msg) ? 'Not signed in. Run `claude login` in a terminal.' : msg, models: this.modelCache ?? [] };
+      return { provider: 'claude', ok: false, detail: (e as Error).message, models: [] };
+    }
+    if (refresh || this.authOk === undefined) this.authOk = await this.probeAuth();
+    return this.authOk
+      ? { provider: 'claude', ok: true, detail: `${models.length} models available to this account`, models }
+      : { provider: 'claude', ok: false, detail: 'Not signed in. Run `claude login` in a terminal, then re-check.', models };
+  }
+
+  private async probeAuth(): Promise<boolean> {
+    try {
+      const q = query({ prompt: 'Reply with exactly: OK', options: { ...this.baseOptions(), effort: 'low', maxTurns: 1, systemPrompt: { type: 'custom', prompt: 'Reply with OK.' } } });
+      for await (const m of q as AsyncIterable<SDKMessage>) {
+        if (m.type === 'result') return !m.is_error;
+      }
+      return false;
+    } catch {
+      return false;
     }
   }
 
