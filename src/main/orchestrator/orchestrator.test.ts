@@ -175,9 +175,18 @@ describe('Orchestrator', () => {
 
   it('cancel marks the streaming turn as cancelled and keeps partial text', async () => {
     const c = await store.create('solo');
-    claude.run = async (req, ev) => { ev.onDelta('partial '); await new Promise<void>((_, rej) => req.signal.addEventListener('abort', () => rej(new Error('aborted')))); throw new Error('unreachable'); };
+    let started!: () => void;
+    const running = new Promise<void>((r) => (started = r));
+    claude.run = (req, ev) => {
+      ev.onDelta('partial ');
+      started();
+      return new Promise<never>((_, rej) => {
+        if (req.signal.aborted) return rej(new Error('aborted'));
+        req.signal.addEventListener('abort', () => rej(new Error('aborted')), { once: true });
+      });
+    };
     const p = orch.send({ conversationId: c.id, text: 'go', mode: 'solo', attachmentIds: [] }, []).catch((e) => e);
-    await new Promise((r) => setTimeout(r, 20));
+    await running; // wait for the adapter to actually be in flight, rather than racing a timer
     expect(orch.isBusy(c.id)).toBe(true);
     orch.cancel(c.id);
     await p;

@@ -159,6 +159,8 @@ export class Orchestrator {
         readImage: async (a) => ({ base64: await this.deps.attachments.readBase64(a), mime: a.mime }),
       };
       try {
+        // Never start a request that has already been cancelled.
+        if (signal.aborted) throw new Error('cancelled');
         const result = await adapter.run(req, events);
         if (result.contextWindow) await caps.discovered(spec.provider, model, result.contextWindow, result.maxOutputTokens);
         // Harness overhead (its own system prompt and tools) dominates small requests; only large packets teach us anything.
