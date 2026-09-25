@@ -52,6 +52,7 @@ export interface Author {
   model: string;
 }
 
+/** Tokens one reply used. `input` includes cached input; `cachedInput` is the part served from cache. */
 export interface Usage {
   input: number;
   output: number;
@@ -101,6 +102,8 @@ export interface HarnessSession {
   /** Hash of the system prompt the session was created with (matters for transports that bake it in). */
   systemHash?: string;
   stale?: boolean;
+  /** Harnesses that only report running totals (Codex): the totals after the last reply, to derive per-reply usage. */
+  usageTotals?: Usage;
 }
 
 export interface Conversation {

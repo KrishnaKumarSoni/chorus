@@ -1,5 +1,5 @@
 import { query, type Options, type SDKMessage, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
-import type { ModelDescriptor, ProviderLimits, ProviderStatus } from '../../shared/types';
+import type { ModelDescriptor, ProviderLimits, ProviderStatus, Usage } from '../../shared/types';
 import { claudeWindows } from './limits';
 import { ProviderError, cleanEnv, type Adapter, type RunEvents, type RunRequest, type RunResult } from './types';
 
@@ -9,6 +9,13 @@ type ContentBlock =
   | { type: 'image'; source: { type: 'base64'; media_type: ImageMime; data: string } };
 
 const AUTH_RE = /authenticat|oauth|not logged in|401|api key/i;
+
+/** Anthropic reports uncached, cache-read and cache-write input separately; Chorus counts all three as input. */
+export function claudeReplyUsage(u: { input_tokens: number; output_tokens: number; cache_read_input_tokens?: number | null; cache_creation_input_tokens?: number | null } | undefined): Usage | undefined {
+  if (!u) return undefined;
+  const cached = u.cache_read_input_tokens ?? 0;
+  return { input: u.input_tokens + cached + (u.cache_creation_input_tokens ?? 0), output: u.output_tokens, cachedInput: cached };
+}
 
 export class ClaudeAdapter implements Adapter {
   readonly provider = 'claude' as const;
@@ -172,9 +179,10 @@ export class ClaudeAdapter implements Adapter {
         failure = typeof m.error === 'string' ? m.error : JSON.stringify(m.error);
       } else if (m.type === 'result') {
         sessionId = m.session_id;
-        const mu = m.modelUsage?.[req.model] ?? Object.values(m.modelUsage ?? {})[0];
+        // `usage` is this reply's main loop; `modelUsage` is a running total across a resumed session, so only its limits are used.
+        usage = claudeReplyUsage(m.usage);
+        const mu = m.modelUsage?.[req.model] ?? Object.values(m.modelUsage ?? {}).sort((a, b) => b.contextWindow - a.contextWindow)[0];
         if (mu) {
-          usage = { input: mu.inputTokens, output: mu.outputTokens, cachedInput: mu.cacheReadInputTokens };
           contextWindow = mu.contextWindow;
           maxOutputTokens = mu.maxOutputTokens;
         }

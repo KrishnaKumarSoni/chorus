@@ -25,6 +25,8 @@ export interface RunResult {
   text: string;
   sessionId: string;
   usage?: Usage;
+  /** Running totals for the harness session, when the harness reports totals rather than per-reply usage. */
+  usageTotals?: Usage;
   contextWindow?: number;
   maxOutputTokens?: number;
   nativeCompaction?: boolean;

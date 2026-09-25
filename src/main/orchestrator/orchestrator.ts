@@ -190,7 +190,7 @@ export class Orchestrator {
         if (result.contextWindow) await caps.discovered(spec.provider, model, result.contextWindow, result.maxOutputTokens);
         // Harness overhead (its own system prompt and tools) dominates small requests; only large packets teach us anything.
         if (packet.kind === 'fresh' && result.usage && packet.estimatedTokens >= 10_000) {
-          const actual = result.usage.input + (result.usage.cachedInput ?? 0);
+          const actual = result.usage.input; // already includes cached input
           await caps.observe(spec.provider, model, packet.estimatedTokens + estimateTextTokens(packet.system), actual);
         }
         const rawText = text || result.text;
@@ -202,6 +202,7 @@ export class Orchestrator {
         await store.setSession(conversationId, spec.provider, {
           id: result.sessionId, model, syncedThroughTurnIndex: Math.max(packet.syncedThroughTurnIndex, turn.index),
           seenTurnIds: [...packet.seenTurnIds, turn.id], referenceIds: packet.referenceIds, systemHash: hashString(packet.system),
+          usageTotals: result.usageTotals,
         });
         const done = await store.patchTurn(conversationId, turn.id, { text: finalText, status: 'done', agreed, usage: result.usage, activity: turn.activity });
         emit({ type: 'turn-done', conversationId, turn: done });

@@ -2,11 +2,24 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { Codex, type ThreadEvent, type ThreadOptions, type UserInput } from '@openai/codex-sdk';
-import type { Effort, ProviderLimits, ProviderStatus } from '../../shared/types';
+import type { Effort, ProviderLimits, ProviderStatus, Usage } from '../../shared/types';
 import { codexRequest } from './codexAppServer';
 import { codexWindows } from './limits';
 import { readCodexModels, codexHome, readConfiguredModel, refreshCodexCatalog } from './codexCatalog';
 import { ProviderError, cleanEnv, type Adapter, type RunEvents, type RunRequest, type RunResult } from './types';
+
+/**
+ * Codex reports token usage as running totals for the whole thread. Subtract
+ * the totals recorded after the previous reply to get what this reply used.
+ */
+export function perReplyUsage(totals: Usage, previous?: Usage): Usage {
+  if (!previous || previous.input > totals.input) return totals;
+  return {
+    input: totals.input - previous.input,
+    output: totals.output - previous.output,
+    cachedInput: (totals.cachedInput ?? 0) - (previous.cachedInput ?? 0),
+  };
+}
 
 function mapEffort(e: Effort): ThreadOptions['modelReasoningEffort'] {
   return e === 'max' ? 'xhigh' : e;
@@ -118,7 +131,7 @@ export class CodexAdapter implements Adapter {
     const { events: stream } = await thread.runStreamed(input, { signal: req.signal });
     const messages = new Map<string, string>();
     const order: string[] = [];
-    let usage: RunResult['usage'];
+    let totals: Usage | undefined;
     let threadId: string | null = null;
 
     const applyMessage = (id: string, text: string) => {
@@ -153,7 +166,7 @@ export class CodexAdapter implements Adapter {
           else if (ev.item.type === 'error') events.onActivity(`Error: ${ev.item.message}`);
           break;
         case 'turn.completed':
-          usage = { input: ev.usage.input_tokens, output: ev.usage.output_tokens, cachedInput: ev.usage.cached_input_tokens };
+          totals = { input: ev.usage.input_tokens, output: ev.usage.output_tokens, cachedInput: ev.usage.cached_input_tokens };
           break;
         case 'turn.failed':
           throw new ProviderError(ev.error.message, authHint(ev.error.message), isAuthFailure(ev.error.message));
@@ -164,7 +177,9 @@ export class CodexAdapter implements Adapter {
     const text = order.map((id) => messages.get(id) ?? '').filter(Boolean).join('\n\n');
     const sessionId = threadId ?? thread.id;
     if (!sessionId) throw new ProviderError('Codex did not report a thread id');
-    return { text, sessionId, usage };
+    // A resumed thread continues its totals; a new thread starts from zero.
+    const previous = req.packet.kind === 'resume' && req.session?.id === sessionId ? req.session.usageTotals : undefined;
+    return { text, sessionId, usage: totals && perReplyUsage(totals, previous), usageTotals: totals };
   }
 }
 
