@@ -12,6 +12,7 @@ import type { Attachment, Provider, TurnEvent } from '../../shared/types';
 class FakeAdapter implements Adapter {
   calls: RunRequest[] = [];
   failNext = 0;
+  delayMs = 0;
   contextWindow = 150_000;
   reply: (req: RunRequest) => string = (r) => `${this.provider} says: ${lastText(r)}`;
   readonly resumeCarriesSystem = true;
@@ -21,6 +22,7 @@ class FakeAdapter implements Adapter {
   async run(req: RunRequest, ev: { onDelta: (t: string) => void }): Promise<RunResult> {
     this.calls.push(req);
     if (req.signal.aborted) throw new Error('aborted');
+    if (this.delayMs) await new Promise((r) => setTimeout(r, this.delayMs));
     if (this.failNext > 0) { this.failNext--; throw new Error('boom'); }
     const text = this.reply(req);
     for (const piece of text.split(' ')) ev.onDelta(piece + ' ');
@@ -84,23 +86,67 @@ describe('Orchestrator', () => {
     expect(packetText(last)).not.toContain('claude says: third');
   });
 
-  it('consensus alternates from the chosen starter, in one shared chronological transcript', async () => {
+  it('consensus: both answer independently, then critiques alternate from the first critic', async () => {
     await settings.set({ consensusStarter: 'codex', consensusMaxTurns: 6 });
-    claude.reply = () => 'claude speaks';
-    codex.reply = () => 'codex speaks';
+    claude.reply = () => `claude turn ${claude.calls.length}`;
+    codex.reply = () => `codex turn ${codex.calls.length}`;
     const c = await store.create('consensus');
     await orch.send({ conversationId: c.id, text: 'decide', mode: 'consensus', attachmentIds: [] }, []);
     const a = (await store.get(c.id))!.turns.filter((t) => t.role === 'assistant');
     expect(a.map((t) => [t.author?.provider, t.round])).toEqual([
       ['codex', 1], ['claude', 2], ['codex', 3], ['claude', 4], ['codex', 5], ['claude', 6],
     ]);
-    // no critique / judge / synthesis roles are assigned
-    expect(a.every((t) => t.kind === undefined)).toBe(true);
-    // the replier sees what the other model just said and is asked to continue, not to critique
-    const claudeFirst = claude.calls[0];
-    expect(packetText(claudeFirst)).toContain('codex speaks');
-    expect(lastText(claudeFirst)).toContain('Continue the discussion');
-    expect(lastText(claudeFirst)).not.toContain('Unresolved');
+    expect(a.every((t) => t.kind === undefined)).toBe(true); // no judge or synthesis roles
+    expect(a.map((t) => !!t.independent)).toEqual([true, true, false, false, false, false]);
+    // Openings: neither sees the other's opening; neither is told to look for agreement.
+    expect(packetText(claude.calls[0])).not.toContain('codex turn 1');
+    expect(packetText(codex.calls[0])).not.toContain('claude turn 1');
+    expect(packetText(claude.calls[0])).not.toContain('[[AGREED]]');
+    // Turn 3 (first critic) sees the other opening and is asked to critique under the agreement rule.
+    expect(packetText(codex.calls[1])).toContain('claude turn 1');
+    expect(lastText(codex.calls[1])).toContain('Continue the discussion');
+    expect(lastText(codex.calls[1])).toContain('material objection');
+    // Turn 4 catches up on the opening it was blind to, plus turn 3.
+    expect(packetText(claude.calls[1])).toContain('codex turn 1');
+    expect(packetText(claude.calls[1])).toContain('codex turn 2');
+    // The first critic's session has both openings recorded after turn 3.
+    const conv = (await store.get(c.id))!;
+    expect(conv.sessions.codex!.seenTurnIds).toEqual(expect.arrayContaining([a[0].id, a[1].id, a[2].id]));
+  });
+
+  it('consensus opening stays blind to the other opening even when rebuilt after it finished', async () => {
+    await settings.set({ consensusStarter: 'codex', consensusMaxTurns: 2 });
+    codex.reply = () => 'CHATGPT OPENING SECRET';
+    const c = await store.create('solo');
+    await orch.send({ conversationId: c.id, text: 'earlier', mode: 'solo', attachmentIds: [] }, []); // gives Claude a live session
+    // Claude's first attempt is slow and fails, so its retry is built after ChatGPT's opening is done.
+    claude.delayMs = 30;
+    claude.failNext = 1;
+    await orch.send({ conversationId: c.id, text: 'decide', mode: 'consensus', attachmentIds: [] }, []);
+    const conv = (await store.get(c.id))!;
+    const openingDoneFirst = conv.turns.find((t) => t.author?.provider === 'codex')!;
+    expect(openingDoneFirst.status).toBe('done');
+    const claudeOpenings = claude.calls.slice(1);
+    expect(claudeOpenings).toHaveLength(2);
+    expect(claudeOpenings[0].packet.kind).toBe('resume');
+    for (const r of claudeOpenings) expect(packetText(r)).not.toContain('CHATGPT OPENING SECRET');
+    expect(conv.sessions.claude!.seenTurnIds).not.toContain(openingDoneFirst.id);
+  });
+
+  it('consensus openings receive the same request, references and prior conversation', async () => {
+    await settings.set({ consensusStarter: 'claude', consensusMaxTurns: 2, debatePrompts: { opening: 'Answer alone; {other} answers separately.', reply: 'Critique {other}.' } });
+    const c = await store.create('consensus');
+    const ref: Attachment = { id: 'r1', name: 'brief.md', mime: 'text/markdown', size: 10, storedPath: '/x', kind: 'text' };
+    texts.set('r1', 'REFERENCE BODY');
+    await store.addReference(c.id, ref);
+    await orch.send({ conversationId: c.id, text: 'decide', mode: 'consensus', attachmentIds: [] }, []);
+    const [cl, cx] = [claude.calls[0], codex.calls[0]];
+    expect(cl.packet.system).toBe(cx.packet.system);
+    expect(cl.packet.kind).toBe(cx.packet.kind);
+    const neutral = (r: RunRequest) => packetText(r).replace(/Claude|ChatGPT/g, 'OTHER');
+    expect(neutral(cl)).toBe(neutral(cx));
+    expect(packetText(cl)).toContain('REFERENCE BODY');
+    expect(packetText(cl)).toContain('decide');
   });
 
   it('announces session changes after each reply, not only when the exchange ends', async () => {
@@ -122,24 +168,27 @@ describe('Orchestrator', () => {
     expect(claude.calls.map((r) => r.webAccess)).toEqual([false, true]);
   });
 
-  it('consensus uses the debate prompts from settings and keeps the agreement convention', async () => {
-    await settings.set({ consensusStarter: 'codex', consensusMaxTurns: 2, debatePrompts: { opening: 'Argue the opposite of {other}.', reply: 'Rebut {other} in one line.' } });
+  it('consensus uses custom debate prompts; only critique turns carry the agreement rule', async () => {
+    await settings.set({ consensusStarter: 'codex', consensusMaxTurns: 3, debatePrompts: { opening: 'Argue the opposite of {other}.', reply: 'Rebut {other} in one line.' } });
     const c = await store.create('consensus');
     await orch.send({ conversationId: c.id, text: 'decide', mode: 'consensus', attachmentIds: [] }, []);
-    expect(lastText(claude.calls[0])).toContain('Rebut ChatGPT in one line.');
-    expect(lastText(claude.calls[0])).toContain('nothing substantive left to add');
     expect(packetText(codex.calls[0])).toContain('Argue the opposite of Claude.');
+    expect(packetText(claude.calls[0])).toContain('Argue the opposite of ChatGPT.');
+    expect(packetText(codex.calls[0])).not.toContain('[[AGREED]]');
+    expect(lastText(codex.calls[1])).toContain('Rebut Claude in one line.');
+    expect(lastText(codex.calls[1])).toContain('no material objection survives');
+    expect(lastText(codex.calls[1])).toContain('not evidence by itself');
   });
 
-  it('consensus ends early once both models agree, and never shows the hidden marker', async () => {
+  it('agreement markers cannot end the independent openings, then two in a row end the debate', async () => {
     await settings.set({ consensusStarter: 'claude', consensusMaxTurns: 10 });
     claude.reply = () => 'Agreed, $20 it is. [[AGREED]]';
     codex.reply = () => 'Same conclusion. [[AGREED]]';
     const c = await store.create('consensus');
     await orch.send({ conversationId: c.id, text: 'decide', mode: 'consensus', attachmentIds: [] }, []);
     const a = (await store.get(c.id))!.turns.filter((t) => t.role === 'assistant');
-    expect(a.map((t) => t.author?.provider)).toEqual(['claude', 'codex']);
-    expect(a.every((t) => t.agreed)).toBe(true);
+    expect(a.map((t) => t.author?.provider)).toEqual(['claude', 'codex', 'claude', 'codex']);
+    expect(a.map((t) => !!t.agreed)).toEqual([false, false, true, true]);
     expect(a[0].text).toBe('Agreed, $20 it is.');
     expect(a.some((t) => t.text.includes('AGREED'))).toBe(false);
   });
@@ -156,14 +205,23 @@ describe('Orchestrator', () => {
   });
 
   it('consensus does not end on one model agreeing alone', async () => {
-    await settings.set({ consensusStarter: 'claude', consensusMaxTurns: 4 });
+    await settings.set({ consensusStarter: 'claude', consensusMaxTurns: 6 });
     claude.reply = () => 'Fine by me. [[AGREED]]';
     codex.reply = () => 'No, I disagree.';
     const c = await store.create('consensus');
     await orch.send({ conversationId: c.id, text: 'decide', mode: 'consensus', attachmentIds: [] }, []);
     const a = (await store.get(c.id))!.turns.filter((t) => t.role === 'assistant');
-    expect(a).toHaveLength(4);
-    expect(a.map((t) => !!t.agreed)).toEqual([true, false, true, false]);
+    expect(a).toHaveLength(6);
+    expect(a.map((t) => !!t.agreed)).toEqual([false, false, true, false, true, false]);
+  });
+
+  it('a failed opening ends the run without starting the debate', async () => {
+    await settings.set({ consensusStarter: 'claude', consensusMaxTurns: 6 });
+    codex.failNext = 2;
+    const c = await store.create('consensus');
+    await orch.send({ conversationId: c.id, text: 'decide', mode: 'consensus', attachmentIds: [] }, []);
+    const a = (await store.get(c.id))!.turns.filter((t) => t.role === 'assistant');
+    expect(a.map((t) => [t.author?.provider, t.status])).toEqual([['claude', 'done'], ['codex', 'error']]);
   });
 
   it('retries once with a fresh packet when a resumed session fails, then records the error', async () => {

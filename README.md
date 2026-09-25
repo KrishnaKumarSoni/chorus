@@ -8,7 +8,7 @@ A macOS desktop chat that talks to **Claude** (through the Claude Agent SDK / Cl
 
 - **Solo** — one model answers (pick Claude or ChatGPT from the Solo menu).
 - **Compare** — both answer the same packet in parallel, side by side.
-- **Consensus** — the models take turns in one shared discussion until both signal agreement or they reach the turn limit. Who starts, the turn limit and the instructions each speaker gets are editable in Settings → Consensus.
+- **Consensus** — both models first answer independently, in parallel, from the same conversation state; neither sees the other's opening. Then they take turns critiquing in one shared discussion, starting with the chosen first critic, until two consecutive critique turns find no material objection left, or the turn limit is reached. The first critic, the turn limit and both instruction texts are editable in Settings → Consensus.
 
 Both models always receive the same material: global custom instructions, per-chat instructions, conversation-level reference files (PDF, DOCX, XLSX/CSV, Markdown, code, images), message-scoped attachments and images, and the shared transcript, including the other model's messages.
 

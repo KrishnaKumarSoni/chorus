@@ -70,8 +70,10 @@ export interface Turn {
   author?: Author;
   round?: number;
   kind?: TurnKind;
-  /** Consensus only: this model signalled it had nothing substantive left to add. */
+  /** Consensus only: this model signalled it had no remaining material objection. */
   agreed?: boolean;
+  /** Consensus only: an opening answer written without seeing the other model's opening. */
+  independent?: boolean;
   status: TurnStatus;
   error?: string;
   usage?: Usage;

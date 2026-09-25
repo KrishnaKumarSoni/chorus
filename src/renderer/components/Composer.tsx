@@ -113,14 +113,14 @@ export function Composer() {
           {mode === 'consensus' && (
             <motion.div key="consensus" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0, transition: { duration: 0.15, ease: 'easeOut' } }} transition={settle} className="overflow-hidden">
               <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2 px-1 pt-2 text-meta" style={{ boxShadow: 'inset 0 1px 0 var(--line)', color: 'var(--ink-2)' }}>
-                <span id="starts-label" className="whitespace-nowrap">First to speak</span>
+                <span id="starts-label" className="whitespace-nowrap" title="Both models answer independently first. This one critiques first.">First critic</span>
                 <Segmented<Provider> ariaLabelledBy="starts-label" value={settings?.consensusStarter ?? 'codex'} onChange={(p) => saveSettings({ consensusStarter: p })}
                   options={[{ value: 'codex', label: 'ChatGPT' }, { value: 'claude', label: 'Claude' }]} />
                 <label htmlFor="max-turns" className="ml-1 whitespace-nowrap">Most turns</label>
                 <Select id="max-turns" size="sm" value={String(settings?.consensusMaxTurns ?? 6)}
-                  options={[2, 4, 6, 8, 10, 12].map((n) => ({ value: String(n), label: String(n) }))}
+                  options={[2, 4, 6, 8, 10, 12, 16, 20].map((n) => ({ value: String(n), label: String(n) }))}
                   onChange={(v) => saveSettings({ consensusMaxTurns: Number(v) })} />
-                <span className="hint ml-auto whitespace-nowrap">They stop early once they agree.</span>
+                <span className="hint ml-auto whitespace-nowrap">They stop early once both find no material objections.</span>
               </div>
             </motion.div>
           )}

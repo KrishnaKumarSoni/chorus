@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { Settings } from '../../shared/types';
 import { DEFAULT_DEBATE_PROMPTS } from '../orchestrator/prompts';
+import { upgradeDebatePrompts } from '../../shared/consensus';
 
 export const DEFAULT_SETTINGS: Settings = {
   globalInstructions: '',
@@ -31,7 +32,7 @@ export class SettingsStore {
         ...raw,
         models: { ...DEFAULT_SETTINGS.models, ...(raw.models ?? {}) },
         effort: { ...DEFAULT_SETTINGS.effort, ...(raw.effort ?? {}) },
-        debatePrompts: { ...DEFAULT_SETTINGS.debatePrompts, ...(raw.debatePrompts ?? {}) },
+        debatePrompts: upgradeDebatePrompts({ ...DEFAULT_SETTINGS.debatePrompts, ...(raw.debatePrompts ?? {}) }),
       };
     } catch {
       /* first run */

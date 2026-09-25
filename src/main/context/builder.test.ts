@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { buildPacket, buildSystemPrompt, hashString, type BuildOptions } from './builder';
+import { withoutRepliesTo } from '../orchestrator/orchestrator';
 import type { Attachment, Capability, Conversation, Turn } from '../../shared/types';
 
 const cap: Capability = { contextWindow: 200_000, calibration: 1, source: 'fallback' };
@@ -17,6 +18,28 @@ const base = (conv: Conversation, current: Turn, extra: Partial<BuildOptions> = 
 });
 
 describe('buildPacket', () => {
+  it('independent consensus opening: a live session neither catches up on nor records the other opening', () => {
+    // Earlier exchange the Claude session has seen, then this run's user turn and ChatGPT's finished opening.
+    const t0 = mkTurn(0, 'user', 'earlier question');
+    const t1 = mkTurn(1, 'assistant', 'earlier answer', { author });
+    const cur = mkTurn(2, 'user', 'decide', { exchangeId: 'run', mode: 'consensus' });
+    const opening = mkTurn(3, 'assistant', 'CHATGPT OPENING SECRET', { exchangeId: 'run', mode: 'consensus', author: { provider: 'codex', model: 'gpt' } });
+    const conv = mkConv([t0, t1, cur, opening]);
+    const session = { id: 's', model: author.model, syncedThroughTurnIndex: 1, seenTurnIds: ['t0', 't1'], referenceIds: [] };
+    const textOf = (p: ReturnType<typeof buildPacket>) => p.blocks.map((b) => (b.type === 'text' ? b.text : '[img]')).join('\n');
+
+    // Control: without the barrier the finished opening leaks through catch-up.
+    expect(textOf(buildPacket(base(conv, cur, { session })))).toContain('CHATGPT OPENING SECRET');
+
+    const p = buildPacket(base(withoutRepliesTo(conv, 'run'), cur, { session }));
+    expect(p.kind).toBe('resume');
+    expect(textOf(p)).not.toContain('CHATGPT OPENING SECRET');
+    expect(p.seenTurnIds).not.toContain('t3'); // so the next, post-opening turn still catches up on it
+    const fresh = buildPacket(base(withoutRepliesTo(conv, 'run'), cur));
+    expect(textOf(fresh)).not.toContain('CHATGPT OPENING SECRET');
+    expect(fresh.seenTurnIds).not.toContain('t3');
+  });
+
   it('builds a fresh packet with system prompt, history and the current message', () => {
     const t0 = mkTurn(0, 'user', 'first');
     const t1 = mkTurn(1, 'assistant', 'reply', { author });

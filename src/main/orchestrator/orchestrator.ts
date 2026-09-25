@@ -30,9 +30,25 @@ interface RunSpec {
   kind?: TurnKind;
   roundInstruction?: string;
   messageOverride?: string;
+  /**
+   * Consensus opening: answer from the conversation as it stood before this run.
+   * Every assistant reply in this exchange is hidden, so neither opening can see the other.
+   */
+  independent?: boolean;
 }
 
 const other = (p: Provider): Provider => (p === 'claude' ? 'codex' : 'claude');
+
+/**
+ * The context barrier for independent openings: the conversation without any
+ * assistant reply from the given exchange. Packets, catch-up, seen-turn
+ * bookkeeping and compaction all read from this view, so a hidden reply can
+ * reach the model by none of them, and a resumed session still catches up on
+ * it on its next (post-opening) turn.
+ */
+export function withoutRepliesTo(conv: Conversation, exchangeId: string): Conversation {
+  return { ...conv, turns: conv.turns.filter((t) => !(t.exchangeId === exchangeId && t.role === 'assistant')) };
+}
 
 export class Orchestrator {
   private inflight = new Map<string, AbortController>();
@@ -89,33 +105,41 @@ export class Orchestrator {
       await Promise.allSettled(both.map((p) => this.runOne(conversationId, userTurn, exchangeId, mode, { provider: p }, signal)));
       return;
     }
-    // Consensus: one shared transcript, the two models alternating. The user
-    // picks who starts and the turn cap. The run ends when both have signalled
-    // agreement in consecutive turns, or when the cap is reached. Agreement is
-    // never forced, and there are no critique, judge or synthesis rounds.
-    let speaker = settings.consensusStarter;
+    // Consensus: both models first answer independently from the same
+    // pre-run conversation (in parallel, each blind to the other's opening),
+    // then they alternate critiques in one shared transcript, starting with the
+    // chosen first critic. Agreement only counts after the openings: the run
+    // ends when two consecutive critique turns carry the marker, or at the cap.
+    // No judge or synthesis turns.
+    const critic = settings.consensusStarter;
     const maxTurns = Math.max(2, Math.min(20, settings.consensusMaxTurns || 6));
+    const openings = await Promise.allSettled(
+      [critic, other(critic)].map((p, i) =>
+        this.runOne(conversationId, userTurn, exchangeId, mode, {
+          provider: p,
+          round: i + 1,
+          independent: true,
+          roundInstruction: consensusOpening(PROVIDER_NAME[other(p)], settings.debatePrompts),
+        }, signal),
+      ),
+    );
+    if (signal.aborted || openings.some((r) => r.status === 'rejected')) return; // a failed opening is already stored with its error
+
+    let speaker = critic;
     let previousAgreed = false;
-    for (let i = 0; i < maxTurns; i++) {
+    for (let i = 2; i < maxTurns; i++) {
       if (signal.aborted) return;
-      const opening = i === 0;
-      const otherName = PROVIDER_NAME[other(speaker)];
       let turn: Turn;
       try {
         turn = await this.runOne(
           conversationId, userTurn, exchangeId, mode,
-          {
-            provider: speaker,
-            round: i + 1,
-            roundInstruction: opening ? consensusOpening(otherName, settings.debatePrompts) : undefined,
-            messageOverride: opening ? undefined : consensusContinue(otherName, settings.debatePrompts),
-          },
+          { provider: speaker, round: i + 1, messageOverride: consensusContinue(PROVIDER_NAME[other(speaker)], settings.debatePrompts) },
           signal,
         );
       } catch {
         return; // the failed turn is already stored with its error
       }
-      if (turn.agreed && previousAgreed) return; // both models have now agreed
+      if (turn.agreed && previousAgreed) return; // both models found no remaining material objection
       previousAgreed = !!turn.agreed;
       speaker = other(speaker);
     }
@@ -128,7 +152,7 @@ export class Orchestrator {
     if (!model) throw await this.fail(conversationId, exchangeId, mode, spec, { provider: spec.provider, model: '' }, `No ${spec.provider} model selected. Choose one in Settings.`);
     const author: Author = { provider: spec.provider, model };
     const turn = await store.appendTurn(conversationId, {
-      id: randomUUID(), role: 'assistant', exchangeId, mode, text: '', createdAt: new Date().toISOString(), status: 'streaming', author, round: spec.round, kind: spec.kind, activity: [],
+      id: randomUUID(), role: 'assistant', exchangeId, mode, text: '', createdAt: new Date().toISOString(), status: 'streaming', author, round: spec.round, kind: spec.kind, independent: spec.independent || undefined, activity: [],
     });
     emit({ type: 'turn-start', conversationId, turn });
 
@@ -171,8 +195,10 @@ export class Orchestrator {
         }
         const rawText = text || result.text;
         // The agreement marker is a hidden convention; keep it out of the transcript.
-        const agreed = hasAgreement(rawText);
-        const finalText = agreed ? stripAgreement(rawText) : rawText;
+        // It never counts in an independent opening, where there is nothing to agree with yet.
+        const marked = hasAgreement(rawText);
+        const agreed = marked && !spec.independent;
+        const finalText = marked ? stripAgreement(rawText) : rawText;
         await store.setSession(conversationId, spec.provider, {
           id: result.sessionId, model, syncedThroughTurnIndex: Math.max(packet.syncedThroughTurnIndex, turn.index),
           seenTurnIds: [...packet.seenTurnIds, turn.id], referenceIds: packet.referenceIds, systemHash: hashString(packet.system),
@@ -213,7 +239,7 @@ export class Orchestrator {
 
   private build(conv: Conversation, userTurn: Turn, author: Author, adapter: Adapter, spec: RunSpec): Packet {
     return buildPacket({
-      conversation: conv, target: author, capability: this.deps.caps.get(author.provider, author.model),
+      conversation: spec.independent ? withoutRepliesTo(conv, userTurn.exchangeId) : conv, target: author, capability: this.deps.caps.get(author.provider, author.model),
       globalInstructions: this.deps.settings.get().globalInstructions, currentTurn: userTurn,
       roundInstruction: spec.roundInstruction, messageOverride: spec.messageOverride, session: conv.sessions[author.provider],
       resumeCarriesSystem: adapter.resumeCarriesSystem, readText: (a) => this.deps.attachments.text(a),
@@ -223,7 +249,7 @@ export class Orchestrator {
   private async compactAndRebuild(conv: Conversation, userTurn: Turn, author: Author, adapter: Adapter, spec: RunSpec, signal: AbortSignal, onActivity: (l: string) => void): Promise<Packet> {
     const { store, caps } = this.deps;
     const cap = caps.get(author.provider, author.model);
-    const plan = planCompaction(conv, cap, Number.MAX_SAFE_INTEGER);
+    const plan = planCompaction(spec.independent ? withoutRepliesTo(conv, userTurn.exchangeId) : conv, cap, Number.MAX_SAFE_INTEGER);
     if (!plan) return this.build(conv, userTurn, author, adapter, spec);
     onActivity(`Compacting ${plan.toSummarize.length} older turns`);
     const prompt = compactionPrompt(plan);

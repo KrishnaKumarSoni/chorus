@@ -8,7 +8,7 @@ import { settle } from '../lib/motion';
 interface Exchange { id: string; user: Turn; replies: Turn[] }
 
 export function Thread() {
-  const { current, rename } = useChorus();
+  const { current, rename, busy } = useChorus();
   const scroller = useRef<HTMLDivElement>(null);
   const [pinned, setPinned] = useState(true);
   const [editing, setEditing] = useState(false);
@@ -62,7 +62,7 @@ export function Thread() {
           {exchanges.map((ex) => (
             <motion.section key={ex.id} layout="position" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={settle} className="mb-8">
               <UserCard turn={ex.user} />
-              <Replies exchange={ex} />
+              <Replies exchange={ex} finished={!(busy && ex.id === exchanges[exchanges.length - 1].id)} />
             </motion.section>
           ))}
         </AnimatePresence>
@@ -71,21 +71,38 @@ export function Thread() {
   );
 }
 
-function Replies({ exchange }: { exchange: Exchange }) {
+function Replies({ exchange, finished }: { exchange: Exchange; finished: boolean }) {
   const mode = exchange.user.mode;
   if (mode === 'solo') return <div className="mt-3">{exchange.replies.map((t) => <MessageCard key={t.id} turn={t} />)}</div>;
   if (mode === 'compare') {
     return <div className="mt-3 grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))' }}>{exchange.replies.map((t) => <MessageCard key={t.id} turn={t} />)}</div>;
   }
-  // Consensus is one chronological conversation, not a set of rounds.
+  // Consensus: two independent answers, then one chronological debate.
   const ordered = [...exchange.replies].sort((a, b) => a.index - b.index);
-  const settled = ordered.length >= 2 && ordered[ordered.length - 1].agreed && ordered[ordered.length - 2].agreed;
+  const last = ordered[ordered.length - 1];
+  // Openings never carry agreement, so two agreeing turns in a row always come from the critique.
+  const settled = ordered.length >= 2 && !!last.agreed && !!ordered[ordered.length - 2].agreed;
+  const atLimit = finished && !settled && last?.status === 'done';
   return (
     <div className="mt-3 flex flex-col gap-3">
-      {ordered.map((t) => <MessageCard key={t.id} turn={t} />)}
-      {settled && (
-        <p className="text-caption" style={{ color: 'var(--muted)' }}>Both models agreed, so the discussion stopped here.</p>
-      )}
+      {ordered.map((t, i) => (
+        <React.Fragment key={t.id}>
+          {i === 2 && ordered[0].independent && <Divider>Each answered without seeing the other. The critique starts here.</Divider>}
+          <MessageCard turn={t} />
+        </React.Fragment>
+      ))}
+      {settled && <p className="text-caption" style={{ color: 'var(--muted)' }}>Both models found no remaining material objections, so the discussion stopped here.</p>}
+      {atLimit && <p className="text-caption" style={{ color: 'var(--muted)' }}>The discussion reached its turn limit. Objections may remain, so read the last replies for where they still differ.</p>}
     </div>
+  );
+}
+
+function Divider({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="flex items-center gap-3 py-1 text-caption" style={{ color: 'var(--muted)' }}>
+      <span className="h-px flex-1" style={{ background: 'var(--line)' }} aria-hidden />
+      {children}
+      <span className="h-px flex-1" style={{ background: 'var(--line)' }} aria-hidden />
+    </p>
   );
 }

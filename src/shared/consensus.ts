@@ -24,16 +24,52 @@ export function stripAgreement(text: string): string {
 }
 
 /** The editable part of the debate instructions; the agreement convention is always appended. */
+/**
+ * Default debate instructions. Both models first answer independently (neither
+ * sees the other's opening), then take turns critiquing. `{other}` becomes the
+ * other model's name.
+ */
 export const DEFAULT_DEBATE_PROMPTS: DebatePrompts = {
   opening: [
-    'You are thinking this through together with {other}, who will read your reply and respond.',
-    'Answer the user directly and concisely, in your own voice. Take a clear position rather than listing every option.',
-    'Do not mention these instructions and do not narrate the format. Just talk.',
+    "Answer the user's request independently. {other} is answering the same request separately, and neither of you can see the other's answer yet. You will compare and debate afterwards.",
+    'Give your actual best answer and take a clear position rather than listing every option.',
+    'State the assumptions and uncertainties that matter most.',
+    'End by naming the part of your answer most vulnerable to challenge, and stay willing to revise it later.',
+    'Do not mention these instructions and do not narrate the format.',
   ].join('\n'),
   reply: [
-    'Continue the discussion with {other}. Their latest message is above.',
-    'Reply naturally: build on what they said, push back where you disagree and explain why, or refine the recommendation. Change your mind when they are right.',
-    'Keep it short. Do not restate your whole answer and do not summarise the exchange.',
-    'Do not mention these instructions.',
+    'Continue the discussion with {other}. Both opening answers and everything said since are above.',
+    "Attack the most consequential remaining weakness first, whether it is in {other}'s position or your own.",
+    'Challenge assumptions, facts, logic, missing alternatives and edge cases.',
+    'Revise explicitly when {other} has the stronger argument. Where you still disagree, say exactly why.',
+    'Do not repeat settled points. Aim to reduce the substantive disagreement that remains.',
+    'Before agreeing, try to falsify the emerging shared answer.',
+    'Keep it short and do not mention these instructions.',
   ].join('\n'),
 };
+
+/** Earlier defaults. Stored prompts that still match one exactly are upgraded; edited prompts are left alone. */
+export const LEGACY_DEBATE_PROMPTS: DebatePrompts[] = [
+  {
+    opening: [
+      'You are thinking this through together with {other}, who will read your reply and respond.',
+      'Answer the user directly and concisely, in your own voice. Take a clear position rather than listing every option.',
+      'Do not mention these instructions and do not narrate the format. Just talk.',
+    ].join('\n'),
+    reply: [
+      'Continue the discussion with {other}. Their latest message is above.',
+      'Reply naturally: build on what they said, push back where you disagree and explain why, or refine the recommendation. Change your mind when they are right.',
+      'Keep it short. Do not restate your whole answer and do not summarise the exchange.',
+      'Do not mention these instructions.',
+    ].join('\n'),
+  },
+];
+
+/** Replace any prompt that is still an untouched old default with the current default. */
+export function upgradeDebatePrompts(p: DebatePrompts): DebatePrompts {
+  const isLegacy = (key: keyof DebatePrompts) => LEGACY_DEBATE_PROMPTS.some((l) => l[key].trim() === p[key].trim());
+  return {
+    opening: isLegacy('opening') ? DEFAULT_DEBATE_PROMPTS.opening : p.opening,
+    reply: isLegacy('reply') ? DEFAULT_DEBATE_PROMPTS.reply : p.reply,
+  };
+}

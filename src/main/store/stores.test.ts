@@ -1,10 +1,11 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { ConversationStore } from './conversationStore';
 import { SettingsStore } from './settingsStore';
 import { CapabilityCache, FALLBACK_CONTEXT_WINDOW } from './capabilityCache';
+import { DEFAULT_DEBATE_PROMPTS, LEGACY_DEBATE_PROMPTS } from '../../shared/consensus';
 
 let dir: string;
 beforeEach(() => { dir = mkdtempSync(path.join(os.tmpdir(), 'chorus-')); });
@@ -38,6 +39,15 @@ describe('ConversationStore', () => {
 });
 
 describe('SettingsStore', () => {
+  it('upgrades untouched old default debate prompts but keeps custom ones', async () => {
+    const file = path.join(dir, 'prompts.json');
+    const legacy = LEGACY_DEBATE_PROMPTS[0];
+    await fs.writeFile(file, JSON.stringify({ debatePrompts: { opening: legacy.opening, reply: 'My own reply rules for {other}.' } }));
+    const v = await new SettingsStore(file).init();
+    expect(v.debatePrompts.opening).toBe(DEFAULT_DEBATE_PROMPTS.opening);
+    expect(v.debatePrompts.reply).toBe('My own reply rules for {other}.');
+  });
+
   it('merges defaults, persists, and reloads', async () => {
     const s = new SettingsStore(path.join(dir, 'settings.json'));
     expect((await s.init()).soloProvider).toBe('claude');

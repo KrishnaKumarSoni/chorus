@@ -252,23 +252,23 @@ function ProviderGroup({ provider: p, status: st, plan, settings, save }: { prov
 function Debate({ settings, save }: { settings: Settings; save: Save }) {
   return (
     <>
-      <PaneTitle title="Consensus">In Consensus mode the two models take turns until both agree or they reach the turn limit.</PaneTitle>
+      <PaneTitle title="Consensus">Both models first answer on their own, without seeing each other's answer. Then they take turns critiquing until neither has a material objection left, or they reach the turn limit.</PaneTitle>
       <div className="settings-group">
-        <Row label="Who speaks first" labelId="lbl-starter">
+        <Row label="First critic" labelId="lbl-starter" hint="Critiques first, once both independent answers are in.">
           <Segmented<Provider> ariaLabelledBy="lbl-starter" value={settings.consensusStarter} onChange={(consensusStarter) => save({ consensusStarter })}
             options={[{ value: 'codex', label: 'ChatGPT' }, { value: 'claude', label: 'Claude' }]} />
         </Row>
-        <Row label="Most turns" htmlFor="max-turns-setting" hint="They stop earlier once both agree.">
+        <Row label="Most turns" htmlFor="max-turns-setting" hint="Includes the two independent answers. They stop earlier once both find no material objections.">
           <Select id="max-turns-setting" className="w-[128px]" value={String(settings.consensusMaxTurns)}
-            options={[2, 4, 6, 8, 10, 12].map((n) => ({ value: String(n), label: `${n} turns` }))}
+            options={[2, 4, 6, 8, 10, 12, 16, 20].map((n) => ({ value: String(n), label: `${n} turns` }))}
             onChange={(v) => save({ consensusMaxTurns: Number(v) })} />
         </Row>
       </div>
-      <PromptField id="prompt-opening" label="Instructions for the first speaker" value={settings.debatePrompts.opening} fallback={DEFAULT_DEBATE_PROMPTS.opening}
+      <PromptField id="prompt-opening" label="Instructions for each independent answer" value={settings.debatePrompts.opening} fallback={DEFAULT_DEBATE_PROMPTS.opening}
         onSave={(opening) => save({ debatePrompts: { ...settings.debatePrompts, opening } })} />
-      <PromptField id="prompt-reply" label="Instructions for each reply" value={settings.debatePrompts.reply} fallback={DEFAULT_DEBATE_PROMPTS.reply}
+      <PromptField id="prompt-reply" label="Instructions for each critique" value={settings.debatePrompts.reply} fallback={DEFAULT_DEBATE_PROMPTS.reply}
         onSave={(reply) => save({ debatePrompts: { ...settings.debatePrompts, reply } })} />
-      <p className="hint mt-3">Write <code className="mono rounded-[4px] px-1" style={{ background: 'var(--fill-strong)' }}>{'{other}'}</code> where the other model's name should go. Chorus adds the rule a model uses to signal agreement, so the discussion can end early.</p>
+      <p className="hint mt-3">Write <code className="mono rounded-[4px] px-1" style={{ background: 'var(--fill-strong)' }}>{'{other}'}</code> where the other model's name should go. Chorus adds the agreement rule to every critique: a model may signal agreement only when no material objection survives, so the discussion can end early.</p>
     </>
   );
 }
