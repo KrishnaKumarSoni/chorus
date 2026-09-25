@@ -3,7 +3,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { Codex, type ThreadEvent, type ThreadOptions, type UserInput } from '@openai/codex-sdk';
 import type { Effort, ProviderStatus } from '../../shared/types';
-import { readCodexModels, codexHome, readConfiguredModel } from './codexCatalog';
+import { readCodexModels, codexHome, readConfiguredModel, refreshCodexCatalog } from './codexCatalog';
 import { ProviderError, cleanEnv, type Adapter, type RunEvents, type RunRequest, type RunResult } from './types';
 
 function mapEffort(e: Effort): ThreadOptions['modelReasoningEffort'] {
@@ -31,11 +31,11 @@ export async function prepareCodexHome(appHome: string): Promise<string> {
   const model = await readConfiguredModel(userHome);
   const lines = ['# Managed by Chorus. Edit ~/.codex/config.toml for your own Codex setup.', model ? `model = "${model}"` : '', 'notify = []', ''];
   await fs.writeFile(path.join(appHome, 'config.toml'), lines.filter((l) => l !== undefined).join('\n'), 'utf8');
-  // Models catalog: reuse the user's cache when present so context windows are known before the first turn.
+  // Seed the models catalog from the user's cache on first run only; status() refreshes it with the bundled Codex.
   try {
-    await fs.copyFile(path.join(userHome, 'models_cache.json'), path.join(appHome, 'models_cache.json'));
+    await fs.copyFile(path.join(userHome, 'models_cache.json'), path.join(appHome, 'models_cache.json'), fs.constants.COPYFILE_EXCL);
   } catch {
-    /* no cache yet */
+    /* already seeded, or no cache yet */
   }
   return appHome;
 }
@@ -57,9 +57,15 @@ export class CodexAdapter implements Adapter {
     return this.ready;
   }
 
-  async status(): Promise<ProviderStatus> {
+  private catalogRefreshed = false;
+
+  async status(refresh = false): Promise<ProviderStatus> {
     await this.ensureHome();
-    const models = await readCodexModels();
+    if (refresh || !this.catalogRefreshed) {
+      await refreshCodexCatalog(this.home, cleanEnv());
+      this.catalogRefreshed = true;
+    }
+    const models = await readCodexModels(this.home);
     let ok = false;
     let detail = '';
     try {

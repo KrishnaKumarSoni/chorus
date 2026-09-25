@@ -32,6 +32,7 @@ export class ClaudeAdapter implements Adapter {
    */
   async status(refresh = false): Promise<ProviderStatus> {
     let models: ModelDescriptor[] = [];
+    if (refresh) this.modelCache = undefined;
     try {
       models = await this.listModels();
     } catch (e) {
