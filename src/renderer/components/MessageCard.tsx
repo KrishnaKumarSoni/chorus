@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { Warning, Prohibit, Copy, Check } from '@phosphor-icons/react';
 import type { Turn } from '../../shared/types';
 import { Markdown } from './Markdown';
-import { stripAgreement } from '../../shared/consensus';
+import { stripHidden } from '../../shared/consensus';
 import { useChorus } from '../lib/state';
 import { AttachmentChip } from './AttachmentChip';
 import { settle } from '../lib/motion';
@@ -37,10 +37,10 @@ export function MessageCard({ turn, emphasis }: { turn: Turn; emphasis?: boolean
         <span className="h-2 w-2 rounded-full" style={{ background: `var(--${p})` }} />
         <span className="font-semibold">{NAME[p]}</span>
         <span className="mono truncate" style={{ color: 'var(--muted)' }}>{turn.author?.model}</span>
-        {turn.kind && turn.kind !== 'answer' && <span className="rounded-full px-1.5 py-px text-caption font-semibold uppercase tracking-wide" style={{ background: `var(--${p}-soft)`, color: `var(--${p})` }}>{turn.kind}</span>}
+        {turn.kind === 'synthesis' && <span className="rounded-full px-2 py-px text-caption font-semibold" style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }} title="Written by this model from the whole discussion">Summary</span>}
         <span className="ml-auto flex items-center gap-1.5">
           {turn.usage && <span className="mono text-caption" style={{ color: 'var(--muted)' }} title="input / output tokens">{fmt(turn.usage.input)} in, {fmt(turn.usage.output)} out</span>}
-          {turn.status === 'done' && <CopyButton text={stripAgreement(turn.text)} />}
+          {turn.status === 'done' && <CopyButton text={stripHidden(turn.text)} />}
         </span>
       </header>
       {turn.status === 'error' ? (
@@ -55,7 +55,7 @@ export function MessageCard({ turn, emphasis }: { turn: Turn; emphasis?: boolean
           </div>
         </div>
       ) : null}
-      {turn.text ? <Markdown text={stripAgreement(turn.text)} streaming={streaming} /> : streaming ? <Skeleton /> : null}
+      {turn.text ? <Markdown text={stripHidden(turn.text)} streaming={streaming} /> : streaming ? <Skeleton /> : null}
       {turn.status === 'cancelled' && (
         <p className="mt-2 flex items-center gap-1 text-meta" style={{ color: 'var(--muted)' }}><Prohibit size={13} /> Stopped here</p>
       )}

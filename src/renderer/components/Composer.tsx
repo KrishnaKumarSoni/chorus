@@ -6,6 +6,7 @@ import { ModeSwitch } from './ModeSwitch';
 import { AttachmentChip } from './AttachmentChip';
 import type { Attachment, Mode, Provider } from '../../shared/types';
 import { settle } from '../lib/motion';
+import { turnOptions } from '../lib/turns';
 import { Select } from './ui/Select';
 import { Segmented } from './ui/Segmented';
 
@@ -118,7 +119,7 @@ export function Composer() {
                   options={[{ value: 'codex', label: 'ChatGPT' }, { value: 'claude', label: 'Claude' }]} />
                 <label htmlFor="max-turns" className="ml-1 whitespace-nowrap">Most turns</label>
                 <Select id="max-turns" size="sm" value={String(settings?.consensusMaxTurns ?? 6)}
-                  options={[2, 4, 6, 8, 10, 12, 16, 20].map((n) => ({ value: String(n), label: String(n) }))}
+                  options={turnOptions(settings?.consensusMaxTurns ?? 6).map((n) => ({ value: String(n), label: String(n) }))}
                   onChange={(v) => saveSettings({ consensusMaxTurns: Number(v) })} />
                 <span className="hint ml-auto whitespace-nowrap">They stop early once both find no material objections.</span>
               </div>

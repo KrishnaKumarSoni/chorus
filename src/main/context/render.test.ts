@@ -1,3 +1,4 @@
+import { extractState, stripHidden } from '../../shared/consensus';
 import { describe, it, expect } from 'vitest';
 import { renderTurn, renderTranscript, renderReferences } from './render';
 import type { Turn, Attachment } from '../../shared/types';
@@ -36,5 +37,15 @@ describe('render', () => {
     expect(r.truncated).toEqual(['1', '2']);
     expect(r.text).toContain('[... truncated: 500 of 1000 characters shown ...]');
     expect(r.text).toContain('[... truncated: 1500 of 3000 characters shown ...]');
+  });
+});
+
+describe('hidden consensus state', () => {
+  it('splits the state block out of a reply and hides a half-streamed one', () => {
+    const r = extractState('My argument.\n\n<chorus-state>\nQUESTION: x\n</chorus-state>\n[[AGREED]]');
+    expect(r.state).toBe('QUESTION: x');
+    expect(r.text).toBe('My argument.\n\n[[AGREED]]');
+    expect(stripHidden('Point.\n<chorus-state>\nQUESTION: par')).toBe('Point.');
+    expect(extractState('No state here.')).toEqual({ text: 'No state here.', state: undefined });
   });
 });

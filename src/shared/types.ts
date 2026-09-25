@@ -75,6 +75,8 @@ export interface Turn {
   agreed?: boolean;
   /** Consensus only: an opening answer written without seeing the other model's opening. */
   independent?: boolean;
+  /** Consensus only: the shared debate state this critique turn left behind (hidden from the user). */
+  state?: string;
   status: TurnStatus;
   error?: string;
   usage?: Usage;

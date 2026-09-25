@@ -5,6 +5,7 @@ import { useChorus } from '../lib/state';
 import type { Accent, Appearance, Effort, Mode, ModelDescriptor, Provider, ProviderStatus, Settings } from '../../shared/types';
 import { DEFAULT_DEBATE_PROMPTS } from '../../shared/consensus';
 import { pop, quick } from '../lib/motion';
+import { turnOptions } from '../lib/turns';
 import { Select, type SelectOption } from './ui/Select';
 import { Segmented } from './ui/Segmented';
 import { Switch } from './ui/Switch';
@@ -260,7 +261,7 @@ function Debate({ settings, save }: { settings: Settings; save: Save }) {
         </Row>
         <Row label="Most turns" htmlFor="max-turns-setting" hint="Includes the two independent answers. They stop earlier once both find no material objections.">
           <Select id="max-turns-setting" className="w-[128px]" value={String(settings.consensusMaxTurns)}
-            options={[2, 4, 6, 8, 10, 12, 16, 20].map((n) => ({ value: String(n), label: `${n} turns` }))}
+            options={turnOptions(settings.consensusMaxTurns).map((n) => ({ value: String(n), label: `${n} turns` }))}
             onChange={(v) => save({ consensusMaxTurns: Number(v) })} />
         </Row>
       </div>

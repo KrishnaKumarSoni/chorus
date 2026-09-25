@@ -32,6 +32,7 @@ class FakeAdapter implements Adapter {
 const lastText = (r: RunRequest) => { const b = r.packet.blocks[r.packet.blocks.length - 1]; return b.type === 'text' ? b.text : ''; };
 const packetText = (r: RunRequest) => r.packet.blocks.map((b) => (b.type === 'text' ? b.text : '[img]')).join('\n');
 
+const debate = <T extends { role: string; kind?: string }>(turns: T[]) => turns.filter((t) => t.role === 'assistant' && t.kind !== 'synthesis');
 let dir: string; let store: ConversationStore; let settings: SettingsStore; let caps: CapabilityCache;
 let claude: FakeAdapter; let codex: FakeAdapter; let events: TurnEvent[]; let orch: Orchestrator;
 const texts = new Map<string, string>();
@@ -92,26 +93,32 @@ describe('Orchestrator', () => {
     codex.reply = () => `codex turn ${codex.calls.length}`;
     const c = await store.create('consensus');
     await orch.send({ conversationId: c.id, text: 'decide', mode: 'consensus', attachmentIds: [] }, []);
-    const a = (await store.get(c.id))!.turns.filter((t) => t.role === 'assistant');
+    const all = (await store.get(c.id))!.turns.filter((t) => t.role === 'assistant');
+    const a = debate(all) as typeof all;
     expect(a.map((t) => [t.author?.provider, t.round])).toEqual([
       ['codex', 1], ['claude', 2], ['codex', 3], ['claude', 4], ['codex', 5], ['claude', 6],
     ]);
-    expect(a.every((t) => t.kind === undefined)).toBe(true); // no judge or synthesis roles
+    expect(a.every((t) => t.kind === undefined)).toBe(true);
     expect(a.map((t) => !!t.independent)).toEqual([true, true, false, false, false, false]);
+    // One summary at the end, by the model that did not have the last word.
+    expect(all[all.length - 1]).toMatchObject({ kind: 'synthesis', author: { provider: 'codex' }, status: 'done' });
     // Openings: neither sees the other's opening; neither is told to look for agreement.
     expect(packetText(claude.calls[0])).not.toContain('codex turn 1');
     expect(packetText(codex.calls[0])).not.toContain('claude turn 1');
     expect(packetText(claude.calls[0])).not.toContain('[[AGREED]]');
     // Turn 3 (first critic) sees the other opening and is asked to critique under the agreement rule.
     expect(packetText(codex.calls[1])).toContain('claude turn 1');
-    expect(lastText(codex.calls[1])).toContain('Continue the discussion');
+    expect(lastText(codex.calls[1])).toContain('Continue the debate');
     expect(lastText(codex.calls[1])).toContain('material objection');
-    // Turn 4 catches up on the opening it was blind to, plus turn 3.
+    // With no state written (these fake replies carry none), turn 4 falls back to every argument so far.
     expect(packetText(claude.calls[1])).toContain('codex turn 1');
     expect(packetText(claude.calls[1])).toContain('codex turn 2');
-    // The first critic's session has both openings recorded after turn 3.
+    // Critique turns run in fresh threads and leave the stored sessions at the openings.
+    expect(codex.calls[1].packet.kind).toBe('fresh');
+    expect(codex.calls[1].session).toBeUndefined();
     const conv = (await store.get(c.id))!;
-    expect(conv.sessions.codex!.seenTurnIds).toEqual(expect.arrayContaining([a[0].id, a[1].id, a[2].id]));
+    expect(conv.sessions.codex!.seenTurnIds).toContain(a[0].id);
+    expect(conv.sessions.codex!.seenTurnIds).not.toContain(a[2].id);
   });
 
   it('consensus opening stays blind to the other opening even when rebuilt after it finished', async () => {
@@ -178,6 +185,7 @@ describe('Orchestrator', () => {
     expect(lastText(codex.calls[1])).toContain('Rebut Claude in one line.');
     expect(lastText(codex.calls[1])).toContain('no material objection survives');
     expect(lastText(codex.calls[1])).toContain('not evidence by itself');
+    expect(lastText(codex.calls[1])).toContain('<chorus-state>');
   });
 
   it('agreement markers cannot end the independent openings, then two in a row end the debate', async () => {
@@ -186,9 +194,13 @@ describe('Orchestrator', () => {
     codex.reply = () => 'Same conclusion. [[AGREED]]';
     const c = await store.create('consensus');
     await orch.send({ conversationId: c.id, text: 'decide', mode: 'consensus', attachmentIds: [] }, []);
-    const a = (await store.get(c.id))!.turns.filter((t) => t.role === 'assistant');
+    const all = (await store.get(c.id))!.turns.filter((t) => t.role === 'assistant');
+    const a = debate(all) as typeof all;
     expect(a.map((t) => t.author?.provider)).toEqual(['claude', 'codex', 'claude', 'codex']);
     expect(a.map((t) => !!t.agreed)).toEqual([false, false, true, true]);
+    expect(all).toHaveLength(5);
+    expect(all[4]).toMatchObject({ kind: 'synthesis', agreed: false });
+    expect(lastText(claude.calls[claude.calls.length - 1])).toContain('both found no remaining material objection');
     expect(a[0].text).toBe('Agreed, $20 it is.');
     expect(a.some((t) => t.text.includes('AGREED'))).toBe(false);
   });
@@ -199,9 +211,11 @@ describe('Orchestrator', () => {
     codex.reply = () => 'And I still disagree.';
     const c = await store.create('consensus');
     await orch.send({ conversationId: c.id, text: 'decide', mode: 'consensus', attachmentIds: [] }, []);
-    const a = (await store.get(c.id))!.turns.filter((t) => t.role === 'assistant');
+    const all = (await store.get(c.id))!.turns.filter((t) => t.role === 'assistant');
+    const a = debate(all) as typeof all;
     expect(a.map((t) => t.author?.provider)).toEqual(['claude', 'codex', 'claude', 'codex']);
     expect(a.some((t) => t.agreed)).toBe(false);
+    expect(lastText(claude.calls[claude.calls.length - 1])).toContain('without full agreement');
   });
 
   it('consensus does not end on one model agreeing alone', async () => {
@@ -210,9 +224,36 @@ describe('Orchestrator', () => {
     codex.reply = () => 'No, I disagree.';
     const c = await store.create('consensus');
     await orch.send({ conversationId: c.id, text: 'decide', mode: 'consensus', attachmentIds: [] }, []);
-    const a = (await store.get(c.id))!.turns.filter((t) => t.role === 'assistant');
+    const a = debate((await store.get(c.id))!.turns);
     expect(a).toHaveLength(6);
     expect(a.map((t) => !!t.agreed)).toEqual([false, false, true, false, true, false]);
+  });
+
+  it('critiques read the latest shared state and the latest argument, not the whole debate', async () => {
+    await settings.set({ consensusStarter: 'claude', consensusMaxTurns: 5 });
+    let n = 0;
+    const reply = (who: string) => () => { n++; return `${who} ARGUMENT-${n} long reasoning\n<chorus-state>\nSTATE-${n}\n</chorus-state>`; };
+    claude.reply = reply('claude');
+    codex.reply = reply('codex');
+    const c = await store.create('consensus');
+    await orch.send({ conversationId: c.id, text: 'decide', mode: 'consensus', attachmentIds: [] }, []);
+    const conv = (await store.get(c.id))!;
+    const a = debate(conv.turns) as typeof conv.turns;
+    // The state is stored and never shown.
+    expect(a[2].text).not.toContain('chorus-state');
+    expect(a[2].state).toMatch(/^STATE-\d+$/);
+    // Turn 5 (Claude) sees turn 4's state and turn 4's argument only: not turn 3, not the openings.
+    const t5 = claude.calls[2];
+    const t4Arg = a[3].text.split(' ')[1];
+    expect(packetText(t5)).toContain(a[3].state!);
+    expect(packetText(t5)).toContain(t4Arg);
+    expect(packetText(t5)).not.toContain(a[2].text.split(' ')[1]);
+    expect(packetText(t5)).not.toContain(a[0].text.split(' ')[1]);
+    // The summary gets both openings, the final state and the last argument.
+    const summary = codex.calls[codex.calls.length - 1];
+    expect(packetText(summary)).toContain(a[0].text.split(' ')[1]);
+    expect(packetText(summary)).toContain(a[4].state!);
+    expect(packetText(summary)).toContain('## What changed their minds');
   });
 
   it('a failed opening ends the run without starting the debate', async () => {
@@ -221,7 +262,7 @@ describe('Orchestrator', () => {
     const c = await store.create('consensus');
     await orch.send({ conversationId: c.id, text: 'decide', mode: 'consensus', attachmentIds: [] }, []);
     const a = (await store.get(c.id))!.turns.filter((t) => t.role === 'assistant');
-    expect(a.map((t) => [t.author?.provider, t.status])).toEqual([['claude', 'done'], ['codex', 'error']]);
+    expect(a.map((t) => [t.author?.provider, t.status])).toEqual([['claude', 'done'], ['codex', 'error']]); // no critique, no summary
   });
 
   it('retries once with a fresh packet when a resumed session fails, then records the error', async () => {

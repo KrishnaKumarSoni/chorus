@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
+import { CaretRight } from '@phosphor-icons/react';
 import { useChorus } from '../lib/state';
 import { MessageCard, UserCard } from './MessageCard';
 import type { Turn } from '../../shared/types';
@@ -77,14 +78,26 @@ function Replies({ exchange, finished }: { exchange: Exchange; finished: boolean
   if (mode === 'compare') {
     return <div className="mt-3 grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))' }}>{exchange.replies.map((t) => <MessageCard key={t.id} turn={t} />)}</div>;
   }
-  // Consensus: two independent answers, then one chronological debate.
-  const ordered = [...exchange.replies].sort((a, b) => a.index - b.index);
-  const last = ordered[ordered.length - 1];
-  // Openings never carry agreement, so two agreeing turns in a row always come from the critique.
-  const settled = ordered.length >= 2 && !!last.agreed && !!ordered[ordered.length - 2].agreed;
-  const atLimit = finished && !settled && last?.status === 'done';
+  // Consensus: two independent answers, then one chronological debate, then one summary.
+  const all = [...exchange.replies].sort((a, b) => a.index - b.index);
+  const summary = all.find((t) => t.kind === 'synthesis');
+  const ordered = all.filter((t) => t.kind !== 'synthesis');
   return (
     <div className="mt-3 flex flex-col gap-3">
+      {summary && <MessageCard turn={summary} emphasis />}
+      <Discussion ordered={ordered} finished={finished} collapsible={!!summary} />
+    </div>
+  );
+}
+
+function Discussion({ ordered, finished, collapsible }: { ordered: Turn[]; finished: boolean; collapsible: boolean }) {
+  const [open, setOpen] = useState(false);
+  const last = ordered[ordered.length - 1];
+  // Openings never carry agreement, so two agreeing turns in a row always come from the critique.
+  const settled = ordered.length >= 2 && !!last?.agreed && !!ordered[ordered.length - 2].agreed;
+  const atLimit = finished && !settled && last?.status === 'done';
+  const body = (
+    <>
       {ordered.map((t, i) => (
         <React.Fragment key={t.id}>
           {i === 2 && ordered[0].independent && <Divider>Each answered without seeing the other. The critique starts here.</Divider>}
@@ -92,8 +105,24 @@ function Replies({ exchange, finished }: { exchange: Exchange; finished: boolean
         </React.Fragment>
       ))}
       {settled && <p className="text-caption" style={{ color: 'var(--muted)' }}>Both models found no remaining material objections, so the discussion stopped here.</p>}
-      {atLimit && <p className="text-caption" style={{ color: 'var(--muted)' }}>The discussion reached its turn limit. Objections may remain, so read the last replies for where they still differ.</p>}
-    </div>
+      {atLimit && <p className="text-caption" style={{ color: 'var(--muted)' }}>The discussion reached its turn limit. Objections may remain; the summary marks what is still unresolved.</p>}
+    </>
+  );
+  if (!collapsible) return body;
+  return (
+    <>
+      <button className="btn btn-ghost btn-sm self-start" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+        <CaretRight size={12} weight="bold" aria-hidden style={{ transform: open ? 'rotate(90deg)' : 'none', transition: 'transform 150ms ease-out' }} />
+        {open ? 'Hide the discussion' : `Show the discussion (${ordered.length} turns)`}
+      </button>
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div key="discussion" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0, transition: { duration: 0.15, ease: 'easeOut' } }} transition={settle} className="flex flex-col gap-3 overflow-hidden">
+            {body}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </>
   );
 }
 
