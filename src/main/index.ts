@@ -141,10 +141,15 @@ async function boot() {
   });
 
   ipcMain.handle(CHANNELS.settingsGet, () => settings.get());
-  ipcMain.handle(CHANNELS.settingsSet, (_e, patch: Partial<Settings>) => settings.set(patch));
   ipcMain.handle(CHANNELS.providersStatus, (_e, refresh?: boolean) => providerStatus(refresh));
+  ipcMain.handle(CHANNELS.providersLimits, () => Promise.all(Object.values(adapters).map((a) => a.limits())));
+  ipcMain.handle(CHANNELS.settingsSet, async (_e, patch: Partial<Settings>) => {
+    const next = await settings.set(patch);
+    if (patch.appearance) nativeTheme.themeSource = patch.appearance;
+    return next;
+  });
 
-  nativeTheme.themeSource = 'system';
+  nativeTheme.themeSource = settings.get().appearance;
   createWindow();
   providerStatus().catch((e) => console.error('[status]', e));
 }

@@ -1,6 +1,14 @@
 export type Provider = 'claude' | 'codex';
 export type Mode = 'solo' | 'compare' | 'consensus';
 export type Effort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+export type Appearance = 'system' | 'light' | 'dark';
+export type Accent = 'jade' | 'iris' | 'rose' | 'graphite';
+
+/** Instructions given to each model in a consensus run. `{other}` becomes the other model's name. */
+export interface DebatePrompts {
+  opening: string;
+  reply: string;
+}
 
 export interface Settings {
   globalInstructions: string;
@@ -12,6 +20,10 @@ export interface Settings {
   consensusStarter: Provider;
   /** Hard cap on model turns in a consensus run. */
   consensusMaxTurns: number;
+  debatePrompts: DebatePrompts;
+  appearance: Appearance;
+  accent: Accent;
+  sidebarCollapsed: boolean;
 }
 
 export type AttachmentKind = 'image' | 'text' | 'pdf' | 'docx' | 'sheet' | 'binary';
@@ -112,6 +124,8 @@ export interface ModelDescriptor {
   provider: Provider;
   id: string;
   label: string;
+  /** One line from the provider, e.g. what the model is good at. */
+  description?: string;
   contextWindow?: number;
   maxOutputTokens?: number;
   efforts?: Effort[];
@@ -131,6 +145,24 @@ export interface ProviderStatus {
   ok: boolean;
   detail: string;
   models: ModelDescriptor[];
+}
+
+/** One plan usage window, e.g. the 5-hour session or the weekly allowance. */
+export interface LimitWindow {
+  label: string;
+  /** Share of the window already used, 0-100. */
+  usedPercent: number;
+  resetsAt?: string;
+  severity?: 'normal' | 'warning' | 'critical';
+}
+
+export interface ProviderLimits {
+  provider: Provider;
+  plan?: string;
+  windows: LimitWindow[];
+  /** Why no windows are shown (API key, not signed in, fetch failed). */
+  note?: string;
+  checkedAt: string;
 }
 
 /** Events streamed from main to renderer while an exchange runs. */

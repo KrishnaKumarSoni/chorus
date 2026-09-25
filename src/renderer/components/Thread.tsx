@@ -37,22 +37,25 @@ export function Thread() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <header className="drag-region flex items-center gap-3 px-6 pt-[42px] pb-3">
+      <header className="drag-region thread-header flex items-center gap-3 pt-[42px] pr-6 pb-3">
         {editing ? (
           <input autoFocus aria-label="Conversation title" className="field no-drag max-w-[480px] text-title font-semibold" value={title} onChange={(e) => setTitle(e.target.value)}
             onBlur={() => { setEditing(false); if (title.trim() && title !== current?.title) rename(title.trim()); }}
             onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); if (e.key === 'Escape') { setTitle(current?.title ?? ''); setEditing(false); } }} />
         ) : (
-          <button className="no-drag display truncate rounded-[6px] px-1 text-left text-title font-semibold hover:bg-[var(--line)]" onClick={() => setEditing(true)} aria-label={`Rename conversation: ${current?.title}`} title="Click to rename">{current?.title}</button>
+          <button className="no-drag display truncate rounded-[6px] px-1.5 py-0.5 text-left text-title font-semibold transition-colors duration-150 ease-out hover:bg-[var(--fill-strong)]" onClick={() => setEditing(true)} aria-label={`Rename conversation: ${current?.title}`} title="Rename">{current?.title}</button>
         )}
-        <span className="mono ml-auto text-caption" style={{ color: 'var(--muted)' }}>{current?.turns.length ?? 0} turns{current?.compactions.length ? ` · ${current.compactions.length} compaction${current.compactions.length > 1 ? 's' : ''}` : ''}</span>
+        <span className="ml-auto shrink-0 text-caption tabular" style={{ color: 'var(--muted)' }}>{current?.turns.length ?? 0} {current?.turns.length === 1 ? 'turn' : 'turns'}{current?.compactions.length ? ` · ${current.compactions.length} compaction${current.compactions.length > 1 ? 's' : ''}` : ''}</span>
       </header>
-      <div ref={scroller} onScroll={onScroll} className="scroll min-h-0 flex-1 px-6 pb-6">
+      <div ref={scroller} onScroll={onScroll} className="scroll scroll-fade min-h-0 flex-1 px-6 pb-6">
         {exchanges.length === 0 && (
           <div className="flex h-full items-end pb-6">
-            <p className="max-w-[440px] text-body" style={{ color: 'var(--ink-2)' }}>
-              Ask anything. Choose <b>Solo</b>, <b>Compare</b> or <b>Consensus</b> per message; add files to the context panel on the right so both models see the same material.
-            </p>
+            <div className="max-w-[460px]">
+              <p className="text-title font-semibold">Ask anything</p>
+              <p className="mt-1 text-body" style={{ color: 'var(--ink-2)', textWrap: 'pretty' }}>
+                Pick <b>Solo</b>, <b>Compare</b> or <b>Consensus</b> for each message. Add reference files on the right so both models work from the same material.
+              </p>
+            </div>
           </div>
         )}
         <AnimatePresence initial={false}>

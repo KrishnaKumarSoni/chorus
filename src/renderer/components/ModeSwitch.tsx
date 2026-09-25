@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { motion } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
 import { CaretDown, Check } from '@phosphor-icons/react';
 import type { Mode, Provider } from '../../shared/types';
-import { settle } from '../lib/motion';
+import { pop, quick } from '../lib/motion';
 
 const LABEL: Record<Provider, string> = { claude: 'Claude', codex: 'ChatGPT' };
 
@@ -24,30 +24,40 @@ export function ModeSwitch({ mode, solo, onMode, onSolo }: { mode: Mode; solo: P
   ];
   return (
     <div className="relative" ref={root}>
-      <div role="group" aria-label="Reply mode" className="relative flex rounded-[12px] p-[3px]" style={{ background: 'var(--line)' }}>
+      <div role="group" aria-label="Reply mode" className="segmented">
         {items.map((it) => (
           <button key={it.id} aria-pressed={mode === it.id} {...(it.id === 'solo' ? { 'aria-haspopup': 'menu' as const, 'aria-expanded': menu } : {})}
-            className="relative z-10 flex items-center gap-1 whitespace-nowrap rounded-[9px] px-3 py-1 text-meta font-medium"
-            style={{ color: mode === it.id ? 'var(--ink)' : 'var(--ink-2)' }}
+            className="segment" style={{ color: mode === it.id ? 'var(--ink)' : 'var(--ink-2)' }}
             onClick={() => { onMode(it.id); if (it.id === 'solo' && mode === 'solo') setMenu((m) => !m); else setMenu(false); }}>
-            {mode === it.id && <motion.span layoutId="mode-pill" className="absolute inset-0 -z-10 rounded-[9px]" style={{ background: 'var(--panel-solid)', boxShadow: 'var(--shadow)' }} transition={settle} />}
+            {mode === it.id && <motion.span layoutId="mode-pill" className="segment-pill" transition={quick} />}
             {it.label}
             {it.id === 'solo' && <CaretDown size={11} weight="bold" style={{ color: 'var(--muted)' }} />}
           </button>
         ))}
       </div>
-      {menu && (
-        <motion.div initial={{ opacity: 0, scale: 0.96, y: 4 }} animate={{ opacity: 1, scale: 1, y: 0 }} transition={settle} style={{ transformOrigin: 'bottom left' }}
-          role="menu" aria-label="Solo provider" className="surface absolute bottom-full left-0 z-20 mb-2 min-w-[180px] p-1">
-          {(['claude', 'codex'] as Provider[]).map((p) => (
-            <button key={p} role="menuitemradio" aria-checked={solo === p} className="flex w-full items-center justify-between rounded-[8px] px-2.5 py-1.5 text-left text-ui hover:bg-[var(--accent-soft)]"
-              onClick={() => { onSolo(p); setMenu(false); }}>
-              <span>{p === 'claude' ? 'Claude' : 'ChatGPT'}</span>
-              {solo === p && <Check size={14} weight="bold" style={{ color: 'var(--accent)' }} />}
-            </button>
-          ))}
-        </motion.div>
-      )}
+      <AnimatePresence>
+        {menu && (
+          <motion.div initial={{ opacity: 0, scale: 0.96, y: 4 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.98, transition: { duration: 0.12, ease: 'easeOut' } }} transition={pop} style={{ transformOrigin: 'bottom left' }}
+            role="menu" aria-label="Solo replies come from" className="popover absolute bottom-full left-0 z-20 mb-2 min-w-[200px]"
+            onKeyDown={(e) => {
+              if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+              e.preventDefault();
+              const items = [...(e.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]'))];
+              const i = items.indexOf(document.activeElement as HTMLButtonElement);
+              items[(i + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length]?.focus();
+            }}>
+            <p className="eyebrow px-2 pt-1.5 pb-1">Solo replies come from</p>
+            {(['claude', 'codex'] as Provider[]).map((p) => (
+              <button key={p} role="menuitemradio" aria-checked={solo === p} autoFocus={solo === p} className="option items-center"
+                onClick={() => { onSolo(p); setMenu(false); }}>
+                <span className="h-2 w-2 rounded-full" style={{ background: `var(--${p})` }} aria-hidden />
+                <span className="flex-1">{LABEL[p]}</span>
+                {solo === p && <Check size={14} weight="bold" style={{ color: 'var(--accent)' }} aria-hidden />}
+              </button>
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

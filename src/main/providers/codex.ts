@@ -2,7 +2,9 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { Codex, type ThreadEvent, type ThreadOptions, type UserInput } from '@openai/codex-sdk';
-import type { Effort, ProviderStatus } from '../../shared/types';
+import type { Effort, ProviderLimits, ProviderStatus } from '../../shared/types';
+import { codexRequest } from './codexAppServer';
+import { codexWindows } from './limits';
 import { readCodexModels, codexHome, readConfiguredModel, refreshCodexCatalog } from './codexCatalog';
 import { ProviderError, cleanEnv, type Adapter, type RunEvents, type RunRequest, type RunResult } from './types';
 
@@ -76,6 +78,19 @@ export class CodexAdapter implements Adapter {
       detail = 'Not signed in yet. Use the Sign in button below.';
     }
     return { provider: 'codex', ok, detail, models };
+  }
+
+  async limits(): Promise<ProviderLimits> {
+    const checkedAt = new Date().toISOString();
+    await this.ensureHome();
+    try {
+      const r = await codexRequest<{ rateLimits?: { planType?: string | null; primary?: never; secondary?: never } }>('account/rateLimits/read', undefined, { ...cleanEnv(), CODEX_HOME: this.home });
+      const plan = r.rateLimits?.planType ? r.rateLimits.planType[0].toUpperCase() + r.rateLimits.planType.slice(1) : undefined;
+      const windows = codexWindows(r.rateLimits);
+      return { provider: 'codex', plan, windows, note: windows.length ? undefined : 'ChatGPT did not report any limits.', checkedAt };
+    } catch (e) {
+      return { provider: 'codex', windows: [], note: `Unable to read limits: ${(e as Error).message}`, checkedAt };
+    }
   }
 
   async run(req: RunRequest, events: RunEvents): Promise<RunResult> {

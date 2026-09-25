@@ -1,5 +1,6 @@
 import { query, type Options, type SDKMessage, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
-import type { ModelDescriptor, ProviderStatus } from '../../shared/types';
+import type { ModelDescriptor, ProviderLimits, ProviderStatus } from '../../shared/types';
+import { claudeWindows } from './limits';
 import { ProviderError, cleanEnv, type Adapter, type RunEvents, type RunRequest, type RunResult } from './types';
 
 type ImageMime = 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp';
@@ -71,10 +72,34 @@ export class ClaudeAdapter implements Adapter {
         provider: 'claude',
         id: m.value,
         label: m.displayName,
-        efforts: m.supportedEffortLevels,
+        description: m.description,
+        efforts: m.supportsEffort ? m.supportedEffortLevels : [],
         isDefault: i === 0,
       }));
       return this.modelCache;
+    } finally {
+      release();
+      q.close();
+    }
+  }
+
+  /** Plan usage from the harness's /usage data; the process is opened only long enough to answer. */
+  async limits(): Promise<ProviderLimits> {
+    const checkedAt = new Date().toISOString();
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    async function* idle(): AsyncGenerator<SDKUserMessage> {
+      await gate;
+    }
+    const q = query({ prompt: idle(), options: { ...this.baseOptions(), maxTurns: 1 } });
+    try {
+      const u = await q.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({ skipBehaviors: true });
+      const plan = u.subscription_type ? u.subscription_type[0].toUpperCase() + u.subscription_type.slice(1) : undefined;
+      if (!u.rate_limits_available) return { provider: 'claude', plan, windows: [], note: 'This sign-in has no plan limits to show.', checkedAt };
+      const windows = claudeWindows(u.rate_limits as Parameters<typeof claudeWindows>[0]);
+      return { provider: 'claude', plan, windows, note: windows.length ? undefined : 'Claude did not report any limits.', checkedAt };
+    } catch (e) {
+      return { provider: 'claude', windows: [], note: `Unable to read limits: ${(e as Error).message}`, checkedAt };
     } finally {
       release();
       q.close();

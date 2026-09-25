@@ -1,49 +1,64 @@
 import React from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Plus, Gear, Trash } from '@phosphor-icons/react';
+import { Plus, Gear, Trash, WarningCircle } from '@phosphor-icons/react';
 import { useChorus } from '../lib/state';
 import { settle } from '../lib/motion';
 
+const MODE_LABEL = { solo: 'Solo', compare: 'Compare', consensus: 'Consensus' } as const;
+
 export function Sidebar() {
-  const { conversations, current, open, create, remove, setSettingsOpen, statuses } = useChorus();
+  const { conversations, current, open, create, remove, setSettingsOpen, statuses, settings } = useChorus();
   const problems = statuses.filter((s) => !s.ok);
+  const hidden = !!settings?.sidebarCollapsed;
   return (
-    <aside className="chrome flex h-full min-h-0 flex-col" style={{ background: 'var(--sidebar-bg)', borderRight: '1px solid var(--line)' }}>
-      <div className="drag-region flex items-center justify-between pt-[46px] pb-2 pr-2 pl-4">
-        <span className="text-caption font-semibold uppercase tracking-[0.08em]" style={{ color: 'var(--muted)' }}>Conversations</span>
-        <button className="btn btn-ghost no-drag p-1.5" onClick={() => create()} aria-label="New conversation" title="New conversation (⌘N)">
-          <Plus size={15} weight="bold" />
-        </button>
-      </div>
-      <nav className="scroll min-h-0 flex-1 px-2 pb-2">
-        {conversations.length === 0 && <p className="hint px-2 py-3">Nothing yet. Press ⌘N to begin.</p>}
-        <AnimatePresence initial={false}>
-          {conversations.map((c, i) => {
-            const active = c.id === current?.id;
-            return (
-              <motion.div key={c.id} layout initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0, transition: { ...settle, delay: Math.min(i, 8) * 0.03 } }} exit={{ opacity: 0, x: -12 }}
-                className="group relative">
-                <button onClick={() => open(c.id)}
-                  className="w-full rounded-[9px] px-2.5 py-2 text-left"
-                  style={{ background: active ? 'var(--panel-solid)' : 'transparent', boxShadow: active ? 'var(--shadow)' : 'none' }}>
-                  <span className="block truncate text-ui">{c.title}</span>
-                  <span className="mono mt-0.5 block text-caption" style={{ color: 'var(--muted)' }}>{c.mode} · {c.turnCount} turns · {relative(c.updatedAt)}</span>
-                </button>
-                <button className="btn btn-ghost absolute top-1 right-1 p-1.5 opacity-0 group-hover:opacity-100 focus-visible:opacity-100" aria-label={`Delete ${c.title}`}
-                  onClick={(e) => { e.stopPropagation(); if (confirm(`Delete “${c.title}”? This cannot be undone.`)) remove(c.id); }}>
-                  <Trash size={13} />
-                </button>
-              </motion.div>
-            );
-          })}
-        </AnimatePresence>
-      </nav>
-      <div className="border-t px-2 py-2 hairline">
-        <button className="btn btn-ghost w-full justify-start gap-2 text-meta" onClick={() => setSettingsOpen(true)}>
-          <Gear size={15} />
-          Settings
-          {problems.length > 0 && <span className="ml-auto text-caption" style={{ color: 'var(--danger)' }} title={problems.map((p) => p.detail).join('\n')}>{problems.length} issue{problems.length > 1 ? 's' : ''}</span>}
-        </button>
+    <aside id="sidebar" aria-label="Conversations" className="sidebar chrome" style={{ background: 'var(--sidebar-bg)', boxShadow: hidden ? 'none' : 'inset -1px 0 0 var(--line)' }} {...(hidden ? { inert: true } : {})}>
+      <div className="sidebar-inner flex min-h-0 flex-col">
+        <div className="drag-region flex items-center justify-between pt-[46px] pb-1.5 pr-2.5 pl-4">
+          <h2 className="eyebrow">Conversations</h2>
+          <button className="btn btn-ghost btn-icon no-drag" onClick={() => create()} aria-label="New conversation" title="New conversation (⌘N)">
+            <Plus size={15} weight="bold" />
+          </button>
+        </div>
+        <nav aria-label="Conversation list" className="scroll min-h-0 flex-1 px-2 pb-2">
+          {conversations.length === 0 && (
+            <div className="px-2 py-3">
+              <p className="text-ui font-medium">No conversations yet</p>
+              <p className="hint mt-0.5">Each one keeps its own transcript, files and instructions.</p>
+              <button className="btn btn-sm mt-3" onClick={() => create()}>New conversation</button>
+            </div>
+          )}
+          <AnimatePresence initial={false}>
+            {conversations.map((c) => {
+              const active = c.id === current?.id;
+              return (
+                <motion.div key={c.id} layout="position" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4, transition: { duration: 0.15, ease: 'easeOut' } }} transition={settle}
+                  className="group relative">
+                  <button onClick={() => open(c.id)} aria-current={active ? 'page' : undefined}
+                    className="sidebar-row w-full rounded-[9px] py-2 pr-9 pl-2.5 text-left" data-active={active}>
+                    <span className="block truncate text-ui" style={{ fontWeight: active ? 550 : 400 }} title={c.title}>{c.title}</span>
+                    <span className="mt-0.5 block text-caption tabular" style={{ color: 'var(--muted)' }}>{MODE_LABEL[c.mode]} · {c.turnCount} {c.turnCount === 1 ? 'turn' : 'turns'} · {relative(c.updatedAt)}</span>
+                  </button>
+                  <button className="btn btn-ghost btn-icon absolute top-1/2 right-1 -translate-y-1/2 opacity-0 group-hover:opacity-100 focus-visible:opacity-100" aria-label={`Delete “${c.title}”`} title="Delete conversation"
+                    onClick={(e) => { e.stopPropagation(); if (confirm(`Delete “${c.title}”? This removes its transcript and files and cannot be undone.`)) remove(c.id); }}>
+                    <Trash size={14} />
+                  </button>
+                </motion.div>
+              );
+            })}
+          </AnimatePresence>
+        </nav>
+        <div className="px-2 py-2" style={{ boxShadow: 'inset 0 1px 0 var(--line)' }}>
+          <button className="btn btn-ghost w-full justify-start gap-2" onClick={() => setSettingsOpen(true)} title="Settings (⌘,)">
+            <Gear size={16} />
+            Settings
+            {problems.length > 0 && (
+              <span className="ml-auto flex items-center gap-1 text-caption" style={{ color: 'var(--danger)' }} title={problems.map((p) => p.detail).join('\n')}>
+                <WarningCircle size={13} weight="bold" aria-hidden />
+                {problems.length === 1 ? '1 account needs attention' : `${problems.length} accounts need attention`}
+              </span>
+            )}
+          </button>
+        </div>
       </div>
     </aside>
   );

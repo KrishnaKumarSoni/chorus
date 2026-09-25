@@ -1,6 +1,6 @@
-import React from 'react';
-import { motion } from 'framer-motion';
-import { Warning, Prohibit, Copy } from '@phosphor-icons/react';
+import React, { useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { Warning, Prohibit, Copy, Check } from '@phosphor-icons/react';
 import type { Turn } from '../../shared/types';
 import { Markdown } from './Markdown';
 import { stripAgreement } from '../../shared/consensus';
@@ -32,7 +32,7 @@ export function MessageCard({ turn, emphasis }: { turn: Turn; emphasis?: boolean
   return (
     <motion.article layout="position" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={settle}
       className="min-w-0 rounded-[var(--radius)] border px-4 py-3"
-      style={{ borderColor: emphasis ? 'var(--accent)' : 'var(--line)', background: emphasis ? 'var(--accent-soft)' : 'var(--panel-solid)', boxShadow: emphasis ? 'none' : 'var(--shadow)' }}>
+      style={{ borderColor: 'transparent', background: emphasis ? 'var(--accent-soft)' : 'var(--panel-solid)', boxShadow: emphasis ? '0 0 0 1px var(--accent)' : 'var(--shadow)' }}>
       <header className="mb-1.5 flex items-center gap-2 text-meta">
         <span className="h-2 w-2 rounded-full" style={{ background: `var(--${p})` }} />
         <span className="font-semibold">{NAME[p]}</span>
@@ -40,9 +40,7 @@ export function MessageCard({ turn, emphasis }: { turn: Turn; emphasis?: boolean
         {turn.kind && turn.kind !== 'answer' && <span className="rounded-full px-1.5 py-px text-caption font-semibold uppercase tracking-wide" style={{ background: `var(--${p}-soft)`, color: `var(--${p})` }}>{turn.kind}</span>}
         <span className="ml-auto flex items-center gap-1.5">
           {turn.usage && <span className="mono text-caption" style={{ color: 'var(--muted)' }} title="input / output tokens">{fmt(turn.usage.input)} in, {fmt(turn.usage.output)} out</span>}
-          {turn.status === 'done' && (
-            <button className="btn btn-ghost p-1.5" aria-label="Copy reply" onClick={() => navigator.clipboard.writeText(turn.text)}><Copy size={13} /></button>
-          )}
+          {turn.status === 'done' && <CopyButton text={stripAgreement(turn.text)} />}
         </span>
       </header>
       {turn.status === 'error' ? (
@@ -53,7 +51,7 @@ export function MessageCard({ turn, emphasis }: { turn: Turn; emphasis?: boolean
           </div>
           <div className="mt-2 flex items-center gap-2 pl-6" style={{ color: 'var(--ink-2)' }}>
             <span>{authError ? `Your ${NAME[p]} session has expired. Sign in again from Settings, then send this message again.` : 'Check the provider in Settings, then send again.'}</span>
-            <button className="btn text-caption" onClick={() => setSettingsOpen(true)}>Open Settings</button>
+            <button className="btn btn-sm shrink-0" onClick={() => setSettingsOpen(true)}>Open Settings</button>
           </div>
         </div>
       ) : null}
@@ -66,6 +64,22 @@ export function MessageCard({ turn, emphasis }: { turn: Turn; emphasis?: boolean
         <p className="mono mt-2 text-caption" style={{ color: 'var(--muted)' }}>{turn.activity.filter((a) => /compact|rebuild/i.test(a)).join(' · ')}</p>
       )}
     </motion.article>
+  );
+}
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button className="btn btn-ghost btn-icon" aria-label={copied ? 'Copied' : 'Copy reply'} title={copied ? 'Copied' : 'Copy reply'}
+      onClick={async () => { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1500); }}>
+      <AnimatePresence initial={false} mode="popLayout">
+        <motion.span key={copied ? 'done' : 'copy'} className="grid place-items-center"
+          initial={{ opacity: 0, scale: 0.25, filter: 'blur(4px)' }} animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }} exit={{ opacity: 0, scale: 0.25, filter: 'blur(4px)' }}
+          transition={{ type: 'spring', duration: 0.3, bounce: 0 }}>
+          {copied ? <Check size={14} weight="bold" style={{ color: 'var(--accent)' }} /> : <Copy size={14} />}
+        </motion.span>
+      </AnimatePresence>
+    </button>
   );
 }
 

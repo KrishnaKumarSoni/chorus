@@ -12,6 +12,7 @@ export function codexHome(): string {
 interface CachedModel {
   slug: string;
   display_name?: string;
+  description?: string;
   context_window?: number;
   visibility?: string;
   priority?: number;
@@ -84,6 +85,7 @@ export async function readCodexModels(home = codexHome()): Promise<ModelDescript
       provider: 'codex',
       id: m.slug,
       label: m.display_name ?? m.slug,
+      description: m.description,
       contextWindow: m.context_window,
       efforts: (m.supported_reasoning_levels ?? []).map((l) => l.effort).filter((e): e is Effort => EFFORTS.includes(e as Effort)),
       isDefault: m.slug === configured,

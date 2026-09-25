@@ -36,6 +36,7 @@ const api: ChorusApi = {
   },
   providers: {
     status: (refresh) => ipcRenderer.invoke(CHANNELS.providersStatus, refresh),
+    limits: () => ipcRenderer.invoke(CHANNELS.providersLimits),
   },
   auth: {
     start: (provider) => ipcRenderer.invoke(CHANNELS.authStart, provider),

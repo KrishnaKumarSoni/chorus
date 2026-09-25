@@ -1,4 +1,4 @@
-import type { Attachment, AuthEvent, Conversation, ConversationSummary, IngestSource, Mode, Provider, ProviderStatus, SendRequest, Settings, TurnEvent } from './types';
+import type { Attachment, AuthEvent, Conversation, ConversationSummary, IngestSource, Mode, Provider, ProviderLimits, ProviderStatus, SendRequest, Settings, TurnEvent } from './types';
 
 /** The bridge exposed to the renderer as `window.chorus`. */
 export interface ChorusApi {
@@ -30,6 +30,8 @@ export interface ChorusApi {
   };
   providers: {
     status(refresh?: boolean): Promise<ProviderStatus[]>;
+    /** Plan usage left for each signed-in provider. */
+    limits(): Promise<ProviderLimits[]>;
   };
   auth: {
     /** Opens the provider's own consent page in the browser and finishes the flow in-app. */
@@ -49,7 +51,7 @@ export const CHANNELS = {
   msgSend: 'msg:send', msgCancel: 'msg:cancel',
   attIngest: 'att:ingest', attPick: 'att:pick', attPreview: 'att:preview',
   settingsGet: 'settings:get', settingsSet: 'settings:set',
-  providersStatus: 'providers:status',
+  providersStatus: 'providers:status', providersLimits: 'providers:limits',
   authStart: 'auth:start', authCancel: 'auth:cancel', authManual: 'auth:manual', authSignOut: 'auth:signout',
   turnEvent: 'turn:event', authEvent: 'auth:event',
 } as const;

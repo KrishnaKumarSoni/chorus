@@ -107,8 +107,8 @@ export class Orchestrator {
           {
             provider: speaker,
             round: i + 1,
-            roundInstruction: opening ? consensusOpening(otherName) : undefined,
-            messageOverride: opening ? undefined : consensusContinue(otherName),
+            roundInstruction: opening ? consensusOpening(otherName, settings.debatePrompts) : undefined,
+            messageOverride: opening ? undefined : consensusContinue(otherName, settings.debatePrompts),
           },
           signal,
         );

@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit",
     "dist": "electron-vite build && electron-builder --dir",
     "smoke": "node scripts/smoke.mjs",
-    "smoke:live": "node scripts/smoke.mjs --send"
+    "smoke:live": "node scripts/smoke.mjs --send",
+    "visual": "node scripts/visual-check.mjs"
   },
   "keywords": [],
   "author": "",

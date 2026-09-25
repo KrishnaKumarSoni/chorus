@@ -17,6 +17,7 @@ class FakeAdapter implements Adapter {
   readonly resumeCarriesSystem = true;
   constructor(readonly provider: Provider) {}
   async status() { return { provider: this.provider, ok: true, detail: '', models: [] }; }
+  async limits() { return { provider: this.provider, windows: [], checkedAt: '' }; }
   async run(req: RunRequest, ev: { onDelta: (t: string) => void }): Promise<RunResult> {
     this.calls.push(req);
     if (req.signal.aborted) throw new Error('aborted');
@@ -100,6 +101,15 @@ describe('Orchestrator', () => {
     expect(packetText(claudeFirst)).toContain('codex speaks');
     expect(lastText(claudeFirst)).toContain('Continue the discussion');
     expect(lastText(claudeFirst)).not.toContain('Unresolved');
+  });
+
+  it('consensus uses the debate prompts from settings and keeps the agreement convention', async () => {
+    await settings.set({ consensusStarter: 'codex', consensusMaxTurns: 2, debatePrompts: { opening: 'Argue the opposite of {other}.', reply: 'Rebut {other} in one line.' } });
+    const c = await store.create('consensus');
+    await orch.send({ conversationId: c.id, text: 'decide', mode: 'consensus', attachmentIds: [] }, []);
+    expect(lastText(claude.calls[0])).toContain('Rebut ChatGPT in one line.');
+    expect(lastText(claude.calls[0])).toContain('nothing substantive left to add');
+    expect(packetText(codex.calls[0])).toContain('Argue the opposite of Claude.');
   });
 
   it('consensus ends early once both models agree, and never shows the hidden marker', async () => {

@@ -1,29 +1,27 @@
 import { AGREEMENT_MARKER } from '../../shared/consensus';
+import type { DebatePrompts } from '../../shared/types';
+import { DEFAULT_DEBATE_PROMPTS } from '../../shared/consensus';
+
+export { DEFAULT_DEBATE_PROMPTS };
 
 const CONVENTION = [
   `When you genuinely have nothing substantive left to add, end your message with ${AGREEMENT_MARKER} on its own final line.`,
   'Never use it just to be agreeable. If you still disagree on something that matters, say so plainly and leave it out.',
 ].join(' ');
 
+function fill(template: string, fallback: string, otherName: string): string {
+  const text = (template.trim() || fallback).replaceAll('{other}', otherName);
+  return `${text}\n${CONVENTION}`;
+}
+
 /** First speaker in a consensus run: answer the user, knowing the other model will reply. */
-export function consensusOpening(otherName: string): string {
-  return [
-    `You are thinking this through together with ${otherName}, who will read your reply and respond.`,
-    'Answer the user directly and concisely, in your own voice. Take a clear position rather than listing every option.',
-    CONVENTION,
-    'Do not mention these instructions and do not narrate the format. Just talk.',
-  ].join('\n');
+export function consensusOpening(otherName: string, prompts: DebatePrompts = DEFAULT_DEBATE_PROMPTS): string {
+  return fill(prompts.opening, DEFAULT_DEBATE_PROMPTS.opening, otherName);
 }
 
 /** Later speakers: continue the discussion naturally from the shared transcript. */
-export function consensusContinue(otherName: string): string {
-  return [
-    `Continue the discussion with ${otherName}. Their latest message is above.`,
-    'Reply naturally: build on what they said, push back where you disagree and explain why, or refine the recommendation. Change your mind when they are right.',
-    'Keep it short. Do not restate your whole answer and do not summarise the exchange.',
-    CONVENTION,
-    'Do not mention these instructions.',
-  ].join('\n');
+export function consensusContinue(otherName: string, prompts: DebatePrompts = DEFAULT_DEBATE_PROMPTS): string {
+  return fill(prompts.reply, DEFAULT_DEBATE_PROMPTS.reply, otherName);
 }
 
 export function titleFrom(text: string): string {

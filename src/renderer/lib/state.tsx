@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import type { Attachment, AuthEvent, Conversation, ConversationSummary, IngestSource, Mode, Provider, ProviderStatus, Settings, Turn, TurnEvent } from '../../shared/types';
+import type { Attachment, AuthEvent, Conversation, ConversationSummary, IngestSource, Mode, Provider, ProviderLimits, ProviderStatus, Settings, Turn, TurnEvent } from '../../shared/types';
 
 export interface Toast { id: number; text: string; kind: 'info' | 'error' }
 
@@ -21,6 +21,8 @@ interface State {
   toasts: Toast[];
   settingsOpen: boolean;
   auth: Record<Provider, AuthProgress>;
+  limits: ProviderLimits[];
+  limitsLoading: boolean;
 }
 
 interface Actions {
@@ -43,12 +45,36 @@ interface Actions {
   cancelSignIn(provider: Provider): Promise<void>;
   completeSignInManually(provider: Provider, input: string): Promise<void>;
   signOut(provider: Provider): Promise<void>;
+  refreshLimits(): Promise<void>;
+  toggleSidebar(): void;
+}
+
+const LIMITS_EVERY_MS = 5 * 60_000;
+
+/**
+ * Apply appearance and accent to <html>. Transitions are suppressed for the
+ * swap so every surface changes on the same frame instead of smearing.
+ */
+function applyTheme(settings: Settings | undefined) {
+  if (!settings) return;
+  const root = document.documentElement;
+  const theme = settings.appearance === 'system' ? undefined : settings.appearance;
+  if (root.dataset.theme === theme && root.dataset.accent === settings.accent) return;
+  const style = document.createElement('style');
+  style.append(document.createTextNode('*,*::before,*::after{transition:none !important}'));
+  document.head.append(style);
+  if (theme) root.dataset.theme = theme;
+  else delete root.dataset.theme;
+  root.dataset.accent = settings.accent;
+  void document.body.offsetHeight;
+  requestAnimationFrame(() => requestAnimationFrame(() => style.remove()));
 }
 
 const Ctx = createContext<(State & Actions) | undefined>(undefined);
 
 export function ChorusProvider({ children }: { children: React.ReactNode }) {
-  const [state, setState] = useState<State>({ conversations: [], statuses: [], busy: false, toasts: [], settingsOpen: false, auth: IDLE_AUTH });
+  const [state, setState] = useState<State>({ conversations: [], statuses: [], busy: false, toasts: [], settingsOpen: false, auth: IDLE_AUTH, limits: [], limitsLoading: false });
+  const limitsAt = useRef(0);
   const currentId = useRef<string | undefined>(undefined);
   const api = window.chorus;
 
@@ -69,6 +95,26 @@ export function ChorusProvider({ children }: { children: React.ReactNode }) {
     setState((s) => ({ ...s, current, busy: false }));
   }, [api]);
 
+  const refreshLimits = useCallback(async () => {
+    limitsAt.current = Date.now();
+    setState((s) => ({ ...s, limitsLoading: true }));
+    try {
+      const limits = await api.providers.limits();
+      setState((s) => ({ ...s, limits, limitsLoading: false }));
+    } catch {
+      setState((s) => ({ ...s, limitsLoading: false }));
+    }
+  }, [api]);
+
+  useEffect(() => applyTheme(state.settings), [state.settings?.appearance, state.settings?.accent]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const tick = setInterval(() => refreshLimits(), LIMITS_EVERY_MS);
+    const onFocus = () => { if (Date.now() - limitsAt.current > 60_000) refreshLimits(); };
+    window.addEventListener('focus', onFocus);
+    return () => { clearInterval(tick); window.removeEventListener('focus', onFocus); };
+  }, [refreshLimits]);
+
   const reloadCurrent = useCallback(async () => {
     if (!currentId.current) return;
     const current = await api.conversations.get(currentId.current);
@@ -80,11 +126,12 @@ export function ChorusProvider({ children }: { children: React.ReactNode }) {
       const [settings, conversations] = await Promise.all([api.settings.get(), api.conversations.list()]);
       setState((s) => ({ ...s, settings, conversations }));
       if (conversations[0]) await open(conversations[0].id);
+      refreshLimits();
       const statuses = await api.providers.status();
       const fresh = await api.settings.get();
       setState((s) => ({ ...s, statuses, settings: fresh }));
     })().catch((e) => toast((e as Error).message, 'error'));
-  }, [api, open, toast]);
+  }, [api, open, toast, refreshLimits]);
 
   useEffect(() => {
     return api.onTurnEvent((e: TurnEvent) => {
@@ -122,9 +169,10 @@ export function ChorusProvider({ children }: { children: React.ReactNode }) {
       if (e.type === 'exchange-done') {
         reloadCurrent();
         refreshList();
+        refreshLimits();
       }
     });
-  }, [api, refreshList, reloadCurrent]);
+  }, [api, refreshList, reloadCurrent, refreshLimits]);
 
   const setAuth = useCallback((provider: Provider, progress: AuthProgress) => {
     setState((s) => ({ ...s, auth: { ...s.auth, [provider]: progress } }));
@@ -155,18 +203,28 @@ export function ChorusProvider({ children }: { children: React.ReactNode }) {
             .then(async (statuses) => {
               const settings = await api.settings.get();
               setState((s) => ({ ...s, statuses, settings }));
+              refreshLimits();
             })
             .catch((err) => toast((err as Error).message, 'error'));
           break;
       }
     });
-  }, [api, setAuth, toast]);
+  }, [api, setAuth, toast, refreshLimits]);
 
   const actions: Actions = useMemo(
     () => ({
       refreshList,
       open,
       toast,
+      refreshLimits,
+      toggleSidebar() {
+        setState((s) => {
+          if (!s.settings) return s;
+          const sidebarCollapsed = !s.settings.sidebarCollapsed;
+          api.settings.set({ sidebarCollapsed }).catch(() => undefined);
+          return { ...s, settings: { ...s.settings, sidebarCollapsed } };
+        });
+      },
       async signIn(provider) {
         setAuth(provider, { phase: 'awaiting-browser' });
         try {
@@ -188,6 +246,7 @@ export function ChorusProvider({ children }: { children: React.ReactNode }) {
         await api.auth.signOut(provider);
         const statuses = await api.providers.status();
         setState((s) => ({ ...s, statuses }));
+        refreshLimits();
         toast(`Signed out of ${provider === 'claude' ? 'Claude' : 'ChatGPT'}.`);
       },
       dismissToast(id) {
@@ -237,6 +296,8 @@ export function ChorusProvider({ children }: { children: React.ReactNode }) {
         await reloadCurrent();
       },
       async saveSettings(patch) {
+        // Apply locally first so pickers and theme respond on the same frame.
+        setState((s) => (s.settings ? { ...s, settings: { ...s.settings, ...patch, models: { ...s.settings.models, ...(patch.models ?? {}) }, effort: { ...s.settings.effort, ...(patch.effort ?? {}) }, debatePrompts: { ...s.settings.debatePrompts, ...(patch.debatePrompts ?? {}) } } } : s));
         const settings = await api.settings.set(patch);
         setState((s) => ({ ...s, settings }));
       },
@@ -249,7 +310,7 @@ export function ChorusProvider({ children }: { children: React.ReactNode }) {
         setState((s) => ({ ...s, settingsOpen: open }));
       },
     }),
-    [api, open, refreshList, reloadCurrent, toast, setAuth, state.settings?.defaultMode],
+    [api, open, refreshList, reloadCurrent, toast, setAuth, refreshLimits, state.settings?.defaultMode],
   );
 
   return <Ctx.Provider value={{ ...state, ...actions }}>{children}</Ctx.Provider>;

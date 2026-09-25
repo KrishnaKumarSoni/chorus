@@ -6,6 +6,8 @@ import { ModeSwitch } from './ModeSwitch';
 import { AttachmentChip } from './AttachmentChip';
 import type { Attachment, Mode, Provider } from '../../shared/types';
 import { settle } from '../lib/motion';
+import { Select } from './ui/Select';
+import { Segmented } from './ui/Segmented';
 
 export function Composer() {
   const { current, settings, busy, send, cancel, saveSettings, toast } = useChorus();
@@ -69,7 +71,7 @@ export function Composer() {
       onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
       onDragLeave={() => setDragging(false)}
       onDrop={(e) => { e.preventDefault(); setDragging(false); ingest([...e.dataTransfer.files]); }}>
-      <motion.div layout transition={settle} className="surface relative p-2.5" style={{ borderColor: dragging ? 'var(--accent)' : 'var(--line)' }}>
+      <motion.div layout transition={settle} className="surface relative p-2.5" style={{ boxShadow: dragging ? '0 0 0 2px var(--accent)' : 'var(--shadow-pop)' }}>
         <AnimatePresence>
           {dragging && (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-[var(--radius)] text-ui font-medium" style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}>
@@ -86,42 +88,43 @@ export function Composer() {
         </AnimatePresence>
         <textarea ref={area} value={text} onChange={(e) => setText(e.target.value)} onKeyDown={onKey} rows={1}
           onPaste={(e) => { const files = [...e.clipboardData.files]; if (files.length) { e.preventDefault(); ingest(files); } }}
-          placeholder={mode === 'solo' ? 'Message…' : mode === 'compare' ? 'Ask both models side by side…' : 'Ask both models to reach a consensus…'}
+          placeholder={mode === 'solo' ? `Message ${settings?.soloProvider === 'codex' ? 'ChatGPT' : 'Claude'}…` : mode === 'compare' ? 'Ask both models, side by side…' : 'Ask both models to work it out together…'}
           className="selectable w-full bg-transparent px-2 py-1.5 text-body outline-none" aria-label="Message" />
         <div className="mt-1 flex items-center gap-2 px-1">
           <ModeSwitch mode={mode} solo={settings?.soloProvider ?? 'claude'} onMode={setMode} onSolo={(p) => saveSettings({ soloProvider: p })} />
-          <button className="btn btn-ghost shrink-0 p-1.5" onClick={pick} aria-label="Attach files" title="Attach files" disabled={ingesting}><Paperclip size={16} /></button>
-          {ingesting && <span className="hint">Reading file…</span>}
-          <span className="hint ml-auto hidden lg:inline">Enter to send · Shift-Enter for a new line</span>
-          {busy ? (
-            <button className="btn btn-primary p-1.5" onClick={cancel} aria-label="Stop" style={{ background: 'var(--danger)' }}><Stop size={16} weight="fill" /></button>
-          ) : (
-            <motion.button whileTap={{ scale: 0.96 }} className="btn btn-primary shrink-0 p-1.5" onClick={submit} aria-label="Send" aria-disabled={!text.trim() && attachments.length === 0}><ArrowUp size={16} weight="bold" /></motion.button>
-          )}
+          <button className="btn btn-ghost btn-icon shrink-0" onClick={pick} aria-label="Attach files" title="Attach files" disabled={ingesting}><Paperclip size={16} /></button>
+          {ingesting && <span className="hint" role="status">Reading file…</span>}
+          <span className="hint ml-auto hidden lg:inline">Return to send · Shift-Return for a new line</span>
+          <AnimatePresence initial={false} mode="popLayout">
+            {busy ? (
+              <motion.button key="stop" className="btn btn-icon shrink-0" onClick={cancel} aria-label="Stop replying" title="Stop replying"
+                initial={{ opacity: 0, scale: 0.25, filter: 'blur(4px)' }} animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }} exit={{ opacity: 0, scale: 0.25, filter: 'blur(4px)' }} transition={{ type: 'spring', duration: 0.3, bounce: 0 }}>
+                <Stop size={15} weight="fill" />
+              </motion.button>
+            ) : (
+              <motion.button key="send" className="btn btn-primary btn-icon shrink-0" onClick={submit} aria-label="Send" title="Send (Return)" aria-disabled={!text.trim() && attachments.length === 0}
+                initial={{ opacity: 0, scale: 0.25, filter: 'blur(4px)' }} animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }} exit={{ opacity: 0, scale: 0.25, filter: 'blur(4px)' }} transition={{ type: 'spring', duration: 0.3, bounce: 0 }}>
+                <ArrowUp size={16} weight="bold" />
+              </motion.button>
+            )}
+          </AnimatePresence>
         </div>
-        {mode === 'consensus' && (
-          <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1.5 border-t px-1 pt-2 text-meta" style={{ borderColor: 'var(--line)', color: 'var(--ink-2)' }}>
-            <span className="whitespace-nowrap">Starts</span>
-            <div className="flex shrink-0 overflow-hidden rounded-[8px] border" style={{ borderColor: 'var(--line-strong)' }}>
-              {(['codex', 'claude'] as Provider[]).map((p) => {
-                const on = (settings?.consensusStarter ?? 'codex') === p;
-                return (
-                  <button key={p} aria-pressed={on} className="whitespace-nowrap px-2.5 py-1"
-                    style={{ background: on ? 'var(--accent-soft)' : 'transparent', color: on ? 'var(--ink)' : 'var(--muted)', fontWeight: on ? 600 : 400 }}
-                    onClick={() => saveSettings({ consensusStarter: p })}>
-                    {p === 'codex' ? 'ChatGPT' : 'Claude'}
-                  </button>
-                );
-              })}
-            </div>
-            <label htmlFor="max-turns" className="ml-2 whitespace-nowrap">Max turns</label>
-            <select id="max-turns" className="field shrink-0 px-1.5 py-0.5 text-meta" style={{ width: 64 }} value={settings?.consensusMaxTurns ?? 6}
-              onChange={(e) => saveSettings({ consensusMaxTurns: Number(e.target.value) })}>
-              {[2, 4, 6, 8, 10].map((n) => <option key={n} value={n}>{n}</option>)}
-            </select>
-            <span className="hint ml-auto whitespace-nowrap">They stop early if they agree.</span>
-          </div>
-        )}
+        <AnimatePresence initial={false}>
+          {mode === 'consensus' && (
+            <motion.div key="consensus" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0, transition: { duration: 0.15, ease: 'easeOut' } }} transition={settle} className="overflow-hidden">
+              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2 px-1 pt-2 text-meta" style={{ boxShadow: 'inset 0 1px 0 var(--line)', color: 'var(--ink-2)' }}>
+                <span id="starts-label" className="whitespace-nowrap">First to speak</span>
+                <Segmented<Provider> ariaLabelledBy="starts-label" value={settings?.consensusStarter ?? 'codex'} onChange={(p) => saveSettings({ consensusStarter: p })}
+                  options={[{ value: 'codex', label: 'ChatGPT' }, { value: 'claude', label: 'Claude' }]} />
+                <label htmlFor="max-turns" className="ml-1 whitespace-nowrap">Most turns</label>
+                <Select id="max-turns" size="sm" value={String(settings?.consensusMaxTurns ?? 6)}
+                  options={[2, 4, 6, 8, 10, 12].map((n) => ({ value: String(n), label: String(n) }))}
+                  onChange={(v) => saveSettings({ consensusMaxTurns: Number(v) })} />
+                <span className="hint ml-auto whitespace-nowrap">They stop early once they agree.</span>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </motion.div>
     </div>
   );

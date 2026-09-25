@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { Settings } from '../../shared/types';
+import { DEFAULT_DEBATE_PROMPTS } from '../orchestrator/prompts';
 
 export const DEFAULT_SETTINGS: Settings = {
   globalInstructions: '',
@@ -10,6 +11,10 @@ export const DEFAULT_SETTINGS: Settings = {
   effort: { claude: 'high', codex: 'medium' },
   consensusStarter: 'codex',
   consensusMaxTurns: 6,
+  debatePrompts: DEFAULT_DEBATE_PROMPTS,
+  appearance: 'system',
+  accent: 'jade',
+  sidebarCollapsed: false,
 };
 
 export class SettingsStore {
@@ -25,6 +30,7 @@ export class SettingsStore {
         ...raw,
         models: { ...DEFAULT_SETTINGS.models, ...(raw.models ?? {}) },
         effort: { ...DEFAULT_SETTINGS.effort, ...(raw.effort ?? {}) },
+        debatePrompts: { ...DEFAULT_SETTINGS.debatePrompts, ...(raw.debatePrompts ?? {}) },
       };
     } catch {
       /* first run */
@@ -42,6 +48,7 @@ export class SettingsStore {
       ...patch,
       models: { ...this.value.models, ...(patch.models ?? {}) },
       effort: { ...this.value.effort, ...(patch.effort ?? {}) },
+      debatePrompts: { ...this.value.debatePrompts, ...(patch.debatePrompts ?? {}) },
     };
     await fs.writeFile(this.file, JSON.stringify(this.value, null, 2), 'utf8');
     return this.value;

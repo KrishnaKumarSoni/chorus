@@ -1,4 +1,4 @@
-import type { Attachment, Effort, HarnessSession, Provider, ProviderStatus, Usage } from '../../shared/types';
+import type { Attachment, Effort, HarnessSession, Provider, ProviderLimits, ProviderStatus, Usage } from '../../shared/types';
 import type { Packet } from '../context/builder';
 
 export interface RunRequest {
@@ -33,6 +33,8 @@ export interface Adapter {
   /** True when the transport re-sends the system prompt on every resumed request. */
   readonly resumeCarriesSystem: boolean;
   status(refresh?: boolean): Promise<ProviderStatus>;
+  /** Plan usage left on the signed-in account. */
+  limits(): Promise<ProviderLimits>;
   run(req: RunRequest, events: RunEvents): Promise<RunResult>;
 }
 
