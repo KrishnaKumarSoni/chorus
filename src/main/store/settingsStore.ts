@@ -15,6 +15,7 @@ export const DEFAULT_SETTINGS: Settings = {
   appearance: 'system',
   accent: 'jade',
   sidebarCollapsed: false,
+  webAccess: true,
 };
 
 export class SettingsStore {

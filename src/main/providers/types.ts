@@ -11,6 +11,8 @@ export interface RunRequest {
   signal: AbortSignal;
   /** Per-conversation scratch directory (Codex cwd, AGENTS.md). */
   workDir: string;
+  /** Allow the harness's own web search and page fetch tools. */
+  webAccess?: boolean;
   readImage: (att: Attachment) => Promise<{ base64: string; mime: string }>;
 }
 

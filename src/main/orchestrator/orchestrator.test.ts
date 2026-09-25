@@ -103,6 +103,25 @@ describe('Orchestrator', () => {
     expect(lastText(claudeFirst)).not.toContain('Unresolved');
   });
 
+  it('announces session changes after each reply, not only when the exchange ends', async () => {
+    await settings.set({ consensusStarter: 'codex', consensusMaxTurns: 2 });
+    const c = await store.create('consensus');
+    await orch.send({ conversationId: c.id, text: 'decide', mode: 'consensus', attachmentIds: [] }, []);
+    const types = events.filter((e) => e.conversationId === c.id).map((e) => e.type);
+    const firstDone = types.indexOf('turn-done');
+    expect(types[firstDone + 1]).toBe('conversation-updated');
+    expect(types.indexOf('conversation-updated', firstDone)).toBeLessThan(types.indexOf('exchange-done'));
+  });
+
+  it('passes the web access setting to the harness', async () => {
+    await settings.set({ soloProvider: 'claude', webAccess: false });
+    const c = await store.create('solo');
+    await orch.send({ conversationId: c.id, text: 'hi', mode: 'solo', attachmentIds: [] }, []);
+    await settings.set({ webAccess: true });
+    await orch.send({ conversationId: c.id, text: 'again', mode: 'solo', attachmentIds: [] }, []);
+    expect(claude.calls.map((r) => r.webAccess)).toEqual([false, true]);
+  });
+
   it('consensus uses the debate prompts from settings and keeps the agreement convention', async () => {
     await settings.set({ consensusStarter: 'codex', consensusMaxTurns: 2, debatePrompts: { opening: 'Argue the opposite of {other}.', reply: 'Rebut {other} in one line.' } });
     const c = await store.create('consensus');

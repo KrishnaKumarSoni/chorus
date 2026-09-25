@@ -7,6 +7,7 @@ import { DEFAULT_DEBATE_PROMPTS } from '../../shared/consensus';
 import { pop, quick } from '../lib/motion';
 import { Select, type SelectOption } from './ui/Select';
 import { Segmented } from './ui/Segmented';
+import { Switch } from './ui/Switch';
 
 const EFFORTS: Effort[] = ['low', 'medium', 'high', 'xhigh', 'max'];
 const EFFORT_LABEL: Record<Effort, string> = { low: 'Low', medium: 'Medium', high: 'High', xhigh: 'Extra high', max: 'Max' };
@@ -155,6 +156,11 @@ function Models({ settings, statuses, save }: { settings: Settings; statuses: Pr
   return (
     <>
       <PaneTitle title="Models">Sign in to each provider, then choose a model and how hard it thinks.</PaneTitle>
+      <div className="settings-group mb-5">
+        <Row label="Let models search the web" labelId="lbl-web" hint="Both models can look up current facts and read pages. Replies take longer when they do.">
+          <Switch labelledBy="lbl-web" checked={settings.webAccess} onChange={(webAccess) => save({ webAccess })} />
+        </Row>
+      </div>
       <div className="flex flex-col gap-5">
         {(['claude', 'codex'] as Provider[]).map((p) => (
           <ProviderGroup key={p} provider={p} status={statuses.find((s) => s.provider === p)} plan={limits.find((l) => l.provider === p)?.plan} settings={settings} save={save} />

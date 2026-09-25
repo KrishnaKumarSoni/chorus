@@ -331,3 +331,12 @@ textarea { resize: none; }
 .select-trigger:disabled { opacity: 0.6; }
 /* Long-form fields grow with their text instead of hiding it behind a scrollbar. */
 .field-grow { field-sizing: content; max-height: 60vh; }
+@layer components {
+/* Switch: 26px track, 22px thumb, 2px inset. */
+.switch { position: relative; width: 42px; height: 26px; border-radius: 999px; background: var(--fill-strong); box-shadow: inset 0 0 0 1px var(--line); transition-property: background-color; transition-duration: 150ms; transition-timing-function: ease-out; }
+.switch[aria-checked="true"] { background: var(--accent); box-shadow: none; }
+.switch-thumb { position: absolute; top: 2px; left: 2px; width: 22px; height: 22px; border-radius: 999px; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25); transition: translate 250ms cubic-bezier(0.2, 0, 0, 1); }
+.switch[aria-checked="true"] .switch-thumb { translate: 16px 0; }
+.working-dot { width: 6px; height: 6px; border-radius: 999px; background: var(--accent); animation: working 1.4s ease-in-out infinite; }
+@keyframes working { 50% { opacity: 0.3; } }
+}

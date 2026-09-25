@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Warning, Prohibit, Copy, Check } from '@phosphor-icons/react';
 import type { Turn } from '../../shared/types';
@@ -59,11 +59,29 @@ export function MessageCard({ turn, emphasis }: { turn: Turn; emphasis?: boolean
       {turn.status === 'cancelled' && (
         <p className="mt-2 flex items-center gap-1 text-meta" style={{ color: 'var(--muted)' }}><Prohibit size={13} /> Stopped here</p>
       )}
-      {streaming && lastActivity && <p className="mono mt-2 text-caption" style={{ color: 'var(--muted)' }}>{lastActivity}…</p>}
+      {streaming && <Working since={turn.createdAt} label={lastActivity ?? (turn.text ? 'Writing' : 'Thinking')} />}
       {!streaming && turn.activity?.some((a) => /compact|rebuild/i.test(a)) && (
         <p className="mono mt-2 text-caption" style={{ color: 'var(--muted)' }}>{turn.activity.filter((a) => /compact|rebuild/i.test(a)).join(' · ')}</p>
       )}
     </motion.article>
+  );
+}
+
+/** Live status while a reply streams, so long thinking or searching never looks frozen. */
+function Working({ since, label }: { since: string; label: string }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const secs = Math.max(0, Math.round((now - new Date(since).getTime()) / 1000));
+  const elapsed = secs < 60 ? `${secs}s` : `${Math.floor(secs / 60)}m ${String(secs % 60).padStart(2, '0')}s`;
+  return (
+    <p className="mt-3 flex items-center gap-2 text-caption" style={{ color: 'var(--muted)' }}>
+      <span className="working-dot" aria-hidden />
+      <span role="status">{label}…</span>
+      <span className="tabular" aria-hidden>{elapsed}</span>
+    </p>
   );
 }
 

@@ -24,6 +24,8 @@ export interface Settings {
   appearance: Appearance;
   accent: Accent;
   sidebarCollapsed: boolean;
+  /** Let both models search and read the web when a question needs current or outside facts. */
+  webAccess: boolean;
 }
 
 export type AttachmentKind = 'image' | 'text' | 'pdf' | 'docx' | 'sheet' | 'binary';

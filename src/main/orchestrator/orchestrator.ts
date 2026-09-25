@@ -156,6 +156,7 @@ export class Orchestrator {
         conversationId, model, effort: settings.get().effort[spec.provider], packet,
         session: packet.kind === 'resume' ? session : undefined, signal,
         workDir: path.join(this.deps.workRoot, conversationId),
+        webAccess: settings.get().webAccess,
         readImage: async (a) => ({ base64: await this.deps.attachments.readBase64(a), mime: a.mime }),
       };
       try {
@@ -178,6 +179,8 @@ export class Orchestrator {
         });
         const done = await store.patchTurn(conversationId, turn.id, { text: finalText, status: 'done', agreed, usage: result.usage, activity: turn.activity });
         emit({ type: 'turn-done', conversationId, turn: done });
+        // Sessions changed; let the UI refresh them now rather than after a long consensus run ends.
+        emit({ type: 'conversation-updated', conversationId });
         return done;
       } catch (e) {
         const err = e as Error & { hint?: string };

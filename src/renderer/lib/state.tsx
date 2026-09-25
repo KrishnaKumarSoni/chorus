@@ -139,6 +139,15 @@ export function ChorusProvider({ children }: { children: React.ReactNode }) {
         if (e.type === 'exchange-done') refreshList();
         return;
       }
+      if (e.type === 'conversation-updated') {
+        // Sessions, title and compactions change mid-exchange; take them from disk but keep the live turns.
+        api.conversations.get(e.conversationId).then((fresh) => {
+          if (!fresh || currentId.current !== fresh.id) return;
+          setState((s) => (s.current?.id === fresh.id ? { ...s, current: { ...fresh, turns: s.current.turns } } : s));
+        }).catch(() => undefined);
+        refreshList();
+        return;
+      }
       setState((s) => {
         if (!s.current) return s;
         const turns = [...s.current.turns];

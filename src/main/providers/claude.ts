@@ -126,13 +126,17 @@ export class ClaudeAdapter implements Adapter {
       yield userMessage;
     }
 
+    const webTools = req.webAccess ? ['WebSearch', 'WebFetch'] : [];
     const options: Options = {
       ...this.baseOptions(),
+      tools: webTools,
+      allowedTools: webTools,
       model: req.model,
       effort: req.effort,
-      systemPrompt: { type: 'custom', prompt: req.packet.system },
+      systemPrompt: { type: 'custom', prompt: req.webAccess ? `${req.packet.system}\n\nSearch the web when the answer depends on current or outside facts, and say where a fact came from.` : req.packet.system },
       includePartialMessages: true,
-      maxTurns: 1,
+      // Searching takes a few model turns (search, read, answer); without tools one is enough.
+      maxTurns: req.webAccess ? 12 : 1,
       resume: req.packet.kind === 'resume' && req.session ? req.session.id : undefined,
       abortController: abortFrom(req.signal),
     };
@@ -156,7 +160,14 @@ export class ClaudeAdapter implements Adapter {
         if (ev.type === 'content_block_delta' && ev.delta.type === 'text_delta') {
           text += ev.delta.text;
           events.onDelta(ev.delta.text);
+        } else if (ev.type === 'content_block_start' && ev.content_block.type === 'text' && text && !text.endsWith('\n\n')) {
+          // Text after a tool call starts a new paragraph rather than running on.
+          text += '\n\n';
+          events.onDelta('\n\n');
         } else if (ev.type === 'content_block_start' && ev.content_block.type === 'thinking') events.onActivity('Thinking');
+        else if (ev.type === 'content_block_start' && (ev.content_block.type === 'server_tool_use' || ev.content_block.type === 'tool_use')) {
+          events.onActivity(/fetch/i.test(ev.content_block.name) ? 'Reading a web page' : 'Searching the web');
+        }
       } else if (m.type === 'assistant' && m.error) {
         failure = typeof m.error === 'string' ? m.error : JSON.stringify(m.error);
       } else if (m.type === 'result') {

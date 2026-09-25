@@ -97,7 +97,8 @@ export class CodexAdapter implements Adapter {
     await this.ensureHome();
     await fs.mkdir(req.workDir, { recursive: true });
     // Codex has no per-request system prompt; project instructions come from AGENTS.md in the working directory.
-    await fs.writeFile(path.join(req.workDir, 'AGENTS.md'), `${req.packet.system}\n\n## Operating notes\nThis is a chat, not a coding task. Answer directly from the conversation and the provided material; do not run shell commands or read files unless the user explicitly asks you to.\n`, 'utf8');
+    const web = req.webAccess ? ' Search the web when the answer depends on current or outside facts, and say where a fact came from.' : ' You have no web access in this chat; say so if the answer needs current facts.';
+    await fs.writeFile(path.join(req.workDir, 'AGENTS.md'), `${req.packet.system}\n\n## Operating notes\nThis is a chat, not a coding task. Answer directly from the conversation and the provided material; do not run shell commands or read files unless the user explicitly asks you to.${web}\n`, 'utf8');
 
     const opts: ThreadOptions = {
       model: req.model,
@@ -105,7 +106,7 @@ export class CodexAdapter implements Adapter {
       sandboxMode: 'read-only',
       skipGitRepoCheck: true,
       workingDirectory: req.workDir,
-      webSearchMode: 'disabled',
+      webSearchMode: req.webAccess ? 'live' : 'disabled',
       approvalPolicy: 'never',
     };
     const thread = req.packet.kind === 'resume' && req.session ? this.codex.resumeThread(req.session.id, opts) : this.codex.startThread(opts);
@@ -122,7 +123,11 @@ export class CodexAdapter implements Adapter {
 
     const applyMessage = (id: string, text: string) => {
       const prev = messages.get(id) ?? '';
-      if (!messages.has(id)) order.push(id);
+      if (!messages.has(id)) {
+        // A new message (e.g. the answer after a "let me check" remark) starts its own paragraph.
+        if (order.some((o) => messages.get(o))) events.onDelta('\n\n');
+        order.push(id);
+      }
       messages.set(id, text);
       if (text.startsWith(prev)) {
         if (text.length > prev.length) events.onDelta(text.slice(prev.length));
@@ -143,7 +148,8 @@ export class CodexAdapter implements Adapter {
           if (ev.item.type === 'agent_message') applyMessage(ev.item.id, ev.item.text);
           else if (ev.item.type === 'reasoning') events.onActivity('Thinking');
           else if (ev.item.type === 'command_execution') events.onActivity(`Ran: ${ev.item.command.slice(0, 60)}`);
-          else if (ev.item.type === 'web_search') events.onActivity(`Searched: ${ev.item.query}`);
+          else if (ev.item.type === 'web_search') events.onActivity(ev.item.query ? `Searching the web for “${ev.item.query.slice(0, 60)}”` : 'Searching the web');
+          else if (ev.item.type === 'mcp_tool_call') events.onActivity(`Using ${ev.item.tool}`);
           else if (ev.item.type === 'error') events.onActivity(`Error: ${ev.item.message}`);
           break;
         case 'turn.completed':
