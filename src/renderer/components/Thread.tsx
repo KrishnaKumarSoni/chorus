@@ -84,7 +84,7 @@ function Replies({ exchange, finished }: { exchange: Exchange; finished: boolean
   const ordered = all.filter((t) => t.kind !== 'synthesis');
   return (
     <div className="mt-3 flex flex-col gap-3">
-      {summary && <MessageCard turn={summary} emphasis />}
+      {summary && <MessageCard turn={summary} emphasis startedAt={exchange.user.createdAt} />}
       <Discussion ordered={ordered} finished={finished} collapsible={!!summary} />
     </div>
   );

@@ -34,6 +34,15 @@ export function extractState(text: string): { text: string; state?: string } {
   return { text: text.replace(STATE_ANY_RE, '').replace(/\n{3,}/g, '\n\n').trimEnd(), state: state || undefined };
 }
 
+/** Headings a state block must carry to be trusted; a malformed one is ignored and the debate falls back to fuller text. */
+export const STATE_HEADINGS = ['QUESTION:', 'POSITIONS:', 'AGREED:', 'OPEN DISAGREEMENTS:', 'CHANGES SO FAR:'];
+
+export function isValidState(state: string | undefined): state is string {
+  if (!state) return false;
+  const upper = state.toUpperCase();
+  return STATE_HEADINGS.every((h) => upper.includes(h));
+}
+
 /** Everything the user should not see: the state block (even half-streamed) and the agreement marker. */
 export function stripHidden(text: string): string {
   return stripAgreement(text.replace(STATE_ANY_RE, ''));

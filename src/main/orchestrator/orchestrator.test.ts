@@ -133,7 +133,7 @@ describe('Orchestrator', () => {
     const conv = (await store.get(c.id))!;
     const openingDoneFirst = conv.turns.find((t) => t.author?.provider === 'codex')!;
     expect(openingDoneFirst.status).toBe('done');
-    const claudeOpenings = claude.calls.slice(1);
+    const claudeOpenings = claude.calls.slice(1, 3); // then the summary check
     expect(claudeOpenings).toHaveLength(2);
     expect(claudeOpenings[0].packet.kind).toBe('resume');
     for (const r of claudeOpenings) expect(packetText(r)).not.toContain('CHATGPT OPENING SECRET');
@@ -229,31 +229,55 @@ describe('Orchestrator', () => {
     expect(a.map((t) => !!t.agreed)).toEqual([false, false, true, false, true, false]);
   });
 
-  it('critiques read the latest shared state and the latest argument, not the whole debate', async () => {
-    await settings.set({ consensusStarter: 'claude', consensusMaxTurns: 5 });
+  it('critiques read the openings, the latest valid state, their own last turn and the latest argument', async () => {
+    await settings.set({ consensusStarter: 'claude', consensusMaxTurns: 6 });
     let n = 0;
-    const reply = (who: string) => () => { n++; return `${who} ARGUMENT-${n} long reasoning\n<chorus-state>\nSTATE-${n}\n</chorus-state>`; };
+    const state = (k: number) => `QUESTION: q\nPOSITIONS: x\nAGREED: none\nOPEN DISAGREEMENTS: none\nCHANGES SO FAR: STATE-${k}`;
+    const reply = (who: string) => (r: RunRequest) => {
+      if (/Reply with exactly ACCURATE/.test(lastText(r))) return 'ACCURATE';
+      n++;
+      // Turn 5 writes a malformed state, which must be ignored.
+      const block = n === 5 ? 'garbage' : state(n);
+      return `${who} ARGUMENT-${n} reasoning\n<chorus-state>\n${block}\n</chorus-state>`;
+    };
     claude.reply = reply('claude');
     codex.reply = reply('codex');
     const c = await store.create('consensus');
     await orch.send({ conversationId: c.id, text: 'decide', mode: 'consensus', attachmentIds: [] }, []);
     const conv = (await store.get(c.id))!;
     const a = debate(conv.turns) as typeof conv.turns;
-    // The state is stored and never shown.
+    const arg = (t: (typeof a)[number]) => t.text.split(' ')[1];
     expect(a[2].text).not.toContain('chorus-state');
-    expect(a[2].state).toMatch(/^STATE-\d+$/);
-    // Turn 5 (Claude) sees turn 4's state and turn 4's argument only: not turn 3, not the openings.
-    const t5 = claude.calls[2];
-    const t4Arg = a[3].text.split(' ')[1];
-    expect(packetText(t5)).toContain(a[3].state!);
-    expect(packetText(t5)).toContain(t4Arg);
-    expect(packetText(t5)).not.toContain(a[2].text.split(' ')[1]);
-    expect(packetText(t5)).not.toContain(a[0].text.split(' ')[1]);
-    // The summary gets both openings, the final state and the last argument.
-    const summary = codex.calls[codex.calls.length - 1];
-    expect(packetText(summary)).toContain(a[0].text.split(' ')[1]);
-    expect(packetText(summary)).toContain(a[4].state!);
-    expect(packetText(summary)).toContain('## What changed their minds');
+    expect(a[2].state).toContain('STATE-3');
+    // Turn 5 (Claude): state from turn 4, both openings, its own turn 3, ChatGPT's turn 4.
+    const t5 = packetText(claude.calls[2]);
+    expect(t5).toContain('STATE-4');
+    expect(t5).toContain(arg(a[0]));
+    expect(t5).toContain(arg(a[1]));
+    expect(t5).toContain(arg(a[2]));
+    expect(t5).toContain(arg(a[3]));
+    expect(t5).toContain('rewrite only your own POSITIONS line');
+    // Turn 6 (ChatGPT): turn 5's state was malformed, so it falls back to turn 4's state plus turns 4 and 5 verbatim.
+    const t6 = packetText(codex.calls[2]); // opening, turn 4, turn 6, then the summary check
+    expect(t6).toContain('STATE-4');
+    expect(t6).not.toContain('garbage');
+    expect(t6).toContain(arg(a[4]));
+    // Summary by Claude (ChatGPT had the last word), checked by ChatGPT.
+    const summary = conv.turns.find((t) => t.kind === 'synthesis')!;
+    expect(summary.author?.provider).toBe('claude');
+    expect(packetText(claude.calls[claude.calls.length - 1])).toContain('## Final positions, in their own words');
+    expect(summary.review).toEqual({ by: 'codex', status: 'accurate' });
+    expect(codex.calls[codex.calls.length - 1].effort).toBe('low');
+    expect(summary.completedAt).toBeTruthy();
+  });
+
+  it('attaches the checking model\'s corrections to the summary', async () => {
+    await settings.set({ consensusStarter: 'claude', consensusMaxTurns: 4 }); // ChatGPT has the last word, so Claude writes and ChatGPT checks
+    codex.reply = (r) => (/Reply with exactly ACCURATE/.test(lastText(r)) ? 'CORRECTIONS\n- It says I agreed on pricing; I did not.' : 'codex view');
+    const c = await store.create('consensus');
+    await orch.send({ conversationId: c.id, text: 'decide', mode: 'consensus', attachmentIds: [] }, []);
+    const summary = (await store.get(c.id))!.turns.find((t) => t.kind === 'synthesis')!;
+    expect(summary.review).toEqual({ by: 'codex', status: 'corrections', notes: '- It says I agreed on pricing; I did not.' });
   });
 
   it('a failed opening ends the run without starting the debate', async () => {

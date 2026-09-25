@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Warning, Prohibit, Copy, Check } from '@phosphor-icons/react';
+import { Warning, Prohibit, Copy, Check, CheckCircle, WarningCircle } from '@phosphor-icons/react';
 import type { Turn } from '../../shared/types';
 import { Markdown } from './Markdown';
 import { stripHidden } from '../../shared/consensus';
@@ -23,7 +23,7 @@ export function UserCard({ turn }: { turn: Turn }) {
   );
 }
 
-export function MessageCard({ turn, emphasis }: { turn: Turn; emphasis?: boolean }) {
+export function MessageCard({ turn, emphasis, startedAt }: { turn: Turn; emphasis?: boolean; startedAt?: string }) {
   const { setSettingsOpen } = useChorus();
   const p = turn.author?.provider ?? 'claude';
   const authError = turn.status === 'error' && /authenticat|login|sign in|unauthori/i.test(turn.error ?? '');
@@ -39,6 +39,7 @@ export function MessageCard({ turn, emphasis }: { turn: Turn; emphasis?: boolean
         <span className="mono truncate" style={{ color: 'var(--muted)' }}>{turn.author?.model}</span>
         {turn.kind === 'synthesis' && <span className="rounded-full px-2 py-px text-caption font-semibold" style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }} title="Written by this model from the whole discussion">Summary</span>}
         <span className="ml-auto flex items-center gap-1.5">
+          {startedAt && turn.completedAt && <span className="text-caption tabular" style={{ color: 'var(--muted)' }} title="From your message to this summary">Took {duration(startedAt, turn.completedAt)}</span>}
           {turn.usage && <span className="mono text-caption" style={{ color: 'var(--muted)' }} title="input / output tokens">{fmt(turn.usage.input)} in, {fmt(turn.usage.output)} out</span>}
           {turn.status === 'done' && <CopyButton text={stripHidden(turn.text)} />}
         </span>
@@ -60,11 +61,37 @@ export function MessageCard({ turn, emphasis }: { turn: Turn; emphasis?: boolean
         <p className="mt-2 flex items-center gap-1 text-meta" style={{ color: 'var(--muted)' }}><Prohibit size={13} /> Stopped here</p>
       )}
       {streaming && <Working since={turn.createdAt} label={lastActivity ?? (turn.text ? 'Writing' : 'Thinking')} />}
+      {turn.review && <ReviewNote review={turn.review} />}
       {!streaming && turn.activity?.some((a) => /compact|rebuild/i.test(a)) && (
         <p className="mono mt-2 text-caption" style={{ color: 'var(--muted)' }}>{turn.activity.filter((a) => /compact|rebuild/i.test(a)).join(' · ')}</p>
       )}
     </motion.article>
   );
+}
+
+/** The other model's check of a consensus summary, shown under it. Icon and text carry the result, not colour alone. */
+function ReviewNote({ review }: { review: NonNullable<Turn['review']> }) {
+  const who = NAME[review.by];
+  if (review.status === 'pending') {
+    return <p className="mt-3 flex items-center gap-2 text-caption" style={{ color: 'var(--muted)' }}><span className="working-dot" aria-hidden /><span role="status">{who} is checking this summary…</span></p>;
+  }
+  if (review.status === 'accurate') {
+    return <p className="mt-3 flex items-center gap-1.5 text-caption" style={{ color: 'var(--ink-2)', boxShadow: 'inset 0 1px 0 var(--line)', paddingTop: 10 }}><CheckCircle size={14} weight="fill" style={{ color: 'var(--accent)' }} aria-hidden />Checked by {who}: nothing misrepresented.</p>;
+  }
+  if (review.status === 'failed') {
+    return <p className="mt-3 text-caption" style={{ color: 'var(--muted)', boxShadow: 'inset 0 1px 0 var(--line)', paddingTop: 10 }}>{who} could not check this summary.</p>;
+  }
+  return (
+    <div className="mt-3 rounded-[10px] px-3 py-2 text-meta" style={{ background: 'var(--warning-soft)' }}>
+      <p className="flex items-center gap-1.5 font-semibold" style={{ color: 'var(--warning)' }}><WarningCircle size={14} weight="fill" aria-hidden />{who} disputes parts of this summary</p>
+      {review.notes && <Markdown text={review.notes} />}
+    </div>
+  );
+}
+
+function duration(from: string, to: string): string {
+  const secs = Math.max(0, Math.round((new Date(to).getTime() - new Date(from).getTime()) / 1000));
+  return secs < 60 ? `${secs}s` : `${Math.floor(secs / 60)}m ${String(secs % 60).padStart(2, '0')}s`;
 }
 
 /** Live status while a reply streams, so long thinking or searching never looks frozen. */

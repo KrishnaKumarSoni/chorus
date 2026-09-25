@@ -30,6 +30,9 @@ function mapEffort(e: Effort): ThreadOptions['modelReasoningEffort'] {
  * skills and MCP servers do not leak into chat replies. Only the auth file is
  * shared (symlinked), so token refreshes stay in one place.
  */
+/** Codex features a chat app never uses (measured: 12.6k → 9.5k input tokens per request). */
+export const CHAT_UNUSED_FEATURES = ['apps', 'plugins', 'image_generation', 'goals', 'tool_suggest', 'shell_tool', 'view_image', 'sleep_tool'];
+
 export async function prepareCodexHome(appHome: string): Promise<string> {
   await fs.mkdir(appHome, { recursive: true });
   const userHome = codexHome();
@@ -44,7 +47,17 @@ export async function prepareCodexHome(appHome: string): Promise<string> {
     }
   }
   const model = await readConfiguredModel(userHome);
-  const lines = ['# Managed by Chorus. Edit ~/.codex/config.toml for your own Codex setup.', model ? `model = "${model}"` : '', 'notify = []', ''];
+  const lines = [
+    '# Managed by Chorus. Edit ~/.codex/config.toml for your own Codex setup.',
+    model ? `model = "${model}"` : '',
+    'notify = []',
+    '',
+    // Chorus is a chat: switch off tools it never uses. Each one adds instructions to
+    // every request; together they are about a quarter of Codex's fixed overhead.
+    '[features]',
+    ...CHAT_UNUSED_FEATURES.map((f) => `${f} = false`),
+    '',
+  ];
   await fs.writeFile(path.join(appHome, 'config.toml'), lines.filter((l) => l !== undefined).join('\n'), 'utf8');
   // Seed the models catalog from the user's cache on first run only; status() refreshes it with the bundled Codex.
   try {

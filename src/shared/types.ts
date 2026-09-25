@@ -77,10 +77,21 @@ export interface Turn {
   independent?: boolean;
   /** Consensus only: the shared debate state this critique turn left behind (hidden from the user). */
   state?: string;
+  /** Consensus summary only: the other model's check that the summary represents the debate fairly. */
+  review?: SummaryReview;
+  /** When the reply finished (done, error or cancelled). */
+  completedAt?: string;
   status: TurnStatus;
   error?: string;
   usage?: Usage;
   activity?: string[];
+}
+
+export interface SummaryReview {
+  by: Provider;
+  /** 'pending' while the check runs; 'failed' if it could not run. */
+  status: 'pending' | 'accurate' | 'corrections' | 'failed';
+  notes?: string;
 }
 
 export interface Compaction {

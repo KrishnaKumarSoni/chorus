@@ -9,8 +9,8 @@ import type { CapabilityCache } from '../store/capabilityCache';
 import type { ConversationStore } from '../store/conversationStore';
 import type { SettingsStore } from '../store/settingsStore';
 import type { Adapter, RunRequest } from '../providers/types';
-import { consensusCritique, consensusOpening, consensusSynthesis, titleFrom, type DebateArgument } from './prompts';
-import { extractState, hasAgreement, stripAgreement, stripHidden } from '../../shared/consensus';
+import { consensusCritique, consensusOpening, consensusSynthesis, parseReview, summaryReview, titleFrom, type DebateArgument } from './prompts';
+import { extractState, hasAgreement, isValidState, stripAgreement, stripHidden } from '../../shared/consensus';
 
 const PROVIDER_NAME: Record<Provider, string> = { claude: 'Claude', codex: 'ChatGPT' };
 
@@ -144,7 +144,7 @@ export class Orchestrator {
       try {
         turn = await this.runOne(
           conversationId, userTurn, exchangeId, mode,
-          { provider: speaker, round: i + 1, ephemeral: true, roundInstruction: consensusCritique(PROVIDER_NAME[other(speaker)], settings.debatePrompts, debate) },
+          { provider: speaker, round: i + 1, ephemeral: true, roundInstruction: consensusCritique(PROVIDER_NAME[other(speaker)], settings.debatePrompts, { ...debate, own: debate.lastBy[speaker] }) },
           signal,
         );
       } catch {
@@ -162,12 +162,45 @@ export class Orchestrator {
     // One summary for the reader, written by the model that did not have the last word.
     const final = await this.debateSoFar(conversationId, exchangeId);
     const writer = other(final.lastSpeaker ?? critic);
-    await this.runOne(conversationId, userTurn, exchangeId, mode, {
-      provider: writer,
-      kind: 'synthesis',
-      ephemeral: true,
-      roundInstruction: consensusSynthesis({ state: final.state, openings: final.openings, latest: final.latest.slice(-1), reachedAgreement }),
-    }, signal).catch(() => undefined); // a failed summary is stored with its error; the debate stands
+    let summary: Turn;
+    try {
+      summary = await this.runOne(conversationId, userTurn, exchangeId, mode, {
+        provider: writer,
+        kind: 'synthesis',
+        ephemeral: true,
+        roundInstruction: consensusSynthesis({ state: final.state, openings: final.openings, latest: final.latest.slice(-1), reachedAgreement }),
+      }, signal);
+    } catch {
+      return; // a failed summary is stored with its error; the debate stands
+    }
+    if (!signal.aborted) await this.reviewSummary(conversationId, summary, other(writer), final, signal);
+  }
+
+  /** The other model checks the summary for misrepresentation. Low effort, no tools; the result is attached to the summary. */
+  private async reviewSummary(conversationId: string, summary: Turn, reviewer: Provider, debate: { state?: string; openings: DebateArgument[] }, signal: AbortSignal): Promise<void> {
+    const { store, settings, adapters, emit } = this.deps;
+    const model = settings.get().models[reviewer];
+    const publish = async (review: Turn['review']) => {
+      const turn = await store.patchTurn(conversationId, summary.id, { review });
+      emit({ type: 'turn-done', conversationId, turn });
+    };
+    if (!model) return;
+    await publish({ by: reviewer, status: 'pending' });
+    const prompt = summaryReview(debate, stripHidden(summary.text), PROVIDER_NAME[summary.author!.provider]);
+    const packet: Packet = {
+      kind: 'fresh', system: 'You check whether a summary of a debate you took part in is fair and accurate. Be brief.', blocks: [{ type: 'text', text: prompt }],
+      estimatedTokens: estimateTextTokens(prompt), budget: 0, needsCompaction: false, syncedThroughTurnIndex: -1, seenTurnIds: [], referenceIds: [], truncatedReferenceIds: [], warnings: [],
+    };
+    try {
+      const result = await adapters[reviewer].run(
+        { conversationId, model, effort: 'low', packet, signal, webAccess: false, workDir: path.join(this.deps.workRoot, conversationId, 'review'), readImage: async () => ({ base64: '', mime: '' }) },
+        { onDelta: () => undefined, onActivity: () => undefined },
+      );
+      await publish({ by: reviewer, ...parseReview(stripHidden(result.text)) });
+    } catch {
+      await publish({ by: reviewer, status: 'failed' });
+    }
+    emit({ type: 'conversation-updated', conversationId });
   }
 
   /**
@@ -175,7 +208,7 @@ export class Orchestrator {
    * recent shared state, and the arguments from the turn that wrote it onward
    * (normally just the opponent's latest turn; both openings before any state).
    */
-  private async debateSoFar(conversationId: string, exchangeId: string): Promise<{ state?: string; latest: DebateArgument[]; openings: DebateArgument[]; lastSpeaker?: Provider }> {
+  private async debateSoFar(conversationId: string, exchangeId: string): Promise<{ state?: string; latest: DebateArgument[]; openings: DebateArgument[]; lastSpeaker?: Provider; lastBy: Partial<Record<Provider, DebateArgument>> }> {
     const conv = (await this.deps.store.get(conversationId))!;
     const replies = conv.turns
       .filter((t) => t.exchangeId === exchangeId && t.role === 'assistant' && t.status === 'done' && t.kind !== 'synthesis')
@@ -185,13 +218,17 @@ export class Orchestrator {
       label: t.independent ? 'independent answer' : `turn ${t.round ?? t.index}`,
       text: stripHidden(t.text),
     });
+    // Trust only a well-formed state; a malformed one means the next speaker reads more of the debate verbatim.
     let from = 0;
-    for (let i = replies.length - 1; i >= 0; i--) if (replies[i].state) { from = i; break; }
+    for (let i = replies.length - 1; i >= 0; i--) if (isValidState(replies[i].state)) { from = i; break; }
+    const lastBy: Partial<Record<Provider, DebateArgument>> = {};
+    for (const t of replies) lastBy[t.author!.provider] = asArgument(t);
     return {
-      state: replies[from]?.state,
+      state: isValidState(replies[from]?.state) ? replies[from].state : undefined,
       latest: replies.slice(from).map(asArgument),
       openings: replies.filter((t) => t.independent).map(asArgument),
       lastSpeaker: replies[replies.length - 1]?.author?.provider,
+      lastBy,
     };
   }
 
@@ -256,7 +293,7 @@ export class Orchestrator {
             usageTotals: result.usageTotals,
           });
         }
-        const done = await store.patchTurn(conversationId, turn.id, { text: finalText, status: 'done', agreed, state, usage: result.usage, activity: turn.activity });
+        const done = await store.patchTurn(conversationId, turn.id, { text: finalText, status: 'done', agreed, state, usage: result.usage, activity: turn.activity, completedAt: new Date().toISOString() });
         emit({ type: 'turn-done', conversationId, turn: done });
         // Sessions changed; let the UI refresh them now rather than after a long consensus run ends.
         emit({ type: 'conversation-updated', conversationId });
@@ -265,7 +302,7 @@ export class Orchestrator {
         const err = e as Error & { hint?: string };
         lastError = err.hint ? `${err.message} ${err.hint}` : err.message || String(e);
         if (signal.aborted) {
-          const cancelled = await store.patchTurn(conversationId, turn.id, { text: withoutState(text), status: 'cancelled', activity: turn.activity });
+          const cancelled = await store.patchTurn(conversationId, turn.id, { text: withoutState(text), status: 'cancelled', activity: turn.activity, completedAt: new Date().toISOString() });
           emit({ type: 'turn-done', conversationId, turn: cancelled });
           throw new Error('cancelled');
         }
@@ -277,7 +314,7 @@ export class Orchestrator {
         break;
       }
     }
-    const failed = await store.patchTurn(conversationId, turn.id, { text: withoutState(text), status: 'error', error: lastError, activity: turn.activity });
+    const failed = await store.patchTurn(conversationId, turn.id, { text: withoutState(text), status: 'error', error: lastError, activity: turn.activity, completedAt: new Date().toISOString() });
     emit({ type: 'turn-done', conversationId, turn: failed });
     throw new Error(lastError);
   }
