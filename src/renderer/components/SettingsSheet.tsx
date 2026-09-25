@@ -123,7 +123,7 @@ function General({ settings, save }: { settings: Settings; save: Save }) {
       <PaneTitle title="General">How Chorus answers when you do not say otherwise.</PaneTitle>
       <section>
         <label className="label" htmlFor="global">Instructions for every conversation</label>
-        <textarea id="global" className="field field-grow selectable min-h-[132px] text-ui leading-relaxed" value={text} onChange={(e) => setText(e.target.value)}
+        <textarea id="global" className="field scroll selectable h-[160px] text-ui leading-relaxed" value={text} onChange={(e) => setText(e.target.value)}
           onBlur={() => { if (text !== settings.globalInstructions) save({ globalInstructions: text }); }}
           placeholder={'For example:\nI am a product manager.\nPrefer concise answers and challenge my assumptions.'} />
         <p className="hint mt-1.5">Both models read these in every conversation and every mode. Instructions for one chat go in its right-hand panel.</p>
@@ -283,7 +283,7 @@ function PromptField({ id, label, value, fallback, onSave }: { id: string; label
         <label className="label mb-0" htmlFor={id}>{label}</label>
         <button className="btn btn-ghost btn-sm" disabled={isDefault} onClick={() => { setText(fallback); onSave(fallback); }}>Reset to default</button>
       </div>
-      <textarea id={id} className="field field-grow selectable min-h-[112px] text-ui leading-relaxed" value={text} onChange={(e) => setText(e.target.value)}
+      <textarea id={id} className="field scroll selectable h-[180px] text-ui leading-relaxed" value={text} onChange={(e) => setText(e.target.value)}
         onBlur={() => { if (text !== value) onSave(text.trim() ? text : fallback); }} />
     </section>
   );
