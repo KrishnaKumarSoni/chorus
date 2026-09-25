@@ -6,11 +6,13 @@ A macOS desktop chat that talks to **Claude** (through the Claude Agent SDK / Cl
 [ Solo ▾ ]    [ Compare ]    [ Consensus ]
 ```
 
-- **Solo** — one model answers (pick Claude or GPT from the Solo menu).
+- **Solo** — one model answers (pick Claude or ChatGPT from the Solo menu).
 - **Compare** — both answer the same packet in parallel, side by side.
-- **Consensus** — both answer, each critiques the other, then a chair model writes the agreed reply with an explicit *Unresolved* section.
+- **Consensus** — the models take turns in one shared discussion until both signal agreement or they reach the turn limit. Who starts, the turn limit and the instructions each speaker gets are editable in Settings → Consensus.
 
 Both models always receive the same material: global custom instructions, per-chat instructions, conversation-level reference files (PDF, DOCX, XLSX/CSV, Markdown, code, images), message-scoped attachments and images, and the shared transcript, including the other model's messages.
+
+The model pickers list every model the harnesses offer to your account (Opus 5.5, Sonnet 5, Fable 5.1, GPT-6-Astra and so on), read live from the Claude Agent SDK and the bundled Codex catalog. The right-hand panel shows how much of each plan's 5-hour and weekly allowance is left, and when it resets.
 
 Design notes live in `docs/superpowers/specs/2026-09-14-chorus-design.md`.
 
@@ -53,6 +55,9 @@ npm run dist         # Chorus.app in release/mac-arm64/
 npm test             # unit tests (context builder, compaction, stores, attachments, orchestrator)
 npm run smoke        # launches the built app under Playwright and screenshots it
 npm run smoke:live   # same, plus a real Solo message via Codex and a Compare turn
+npm run visual -- <userDataDir> <shotsDir>   # screenshots every surface against a copy of your data
 ```
 
-Keyboard: ⌘N new conversation · ⌘, settings · Enter send · Shift-Enter newline. Drop or paste files anywhere in the composer (message-scoped) or the context panel (conversation-scoped).
+Settings → Appearance switches between light, dark and the system theme, and between four accent colours.
+
+Keyboard: ⌘N new conversation · ⌘, settings · ⌃⌘S show or hide the sidebar · Return send · Shift-Return newline. Drop or paste files anywhere in the composer (message-scoped) or the context panel (conversation-scoped).
