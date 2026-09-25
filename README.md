@@ -61,3 +61,7 @@ npm run visual -- <userDataDir> <shotsDir>   # screenshots every surface against
 Settings → Appearance switches between light, dark and the system theme, and between four accent colours.
 
 Keyboard: ⌘N new conversation · ⌘, settings · ⌃⌘S show or hide the sidebar · Return send · Shift-Return newline. Drop or paste files anywhere in the composer (message-scoped) or the context panel (conversation-scoped).
+
+## License
+
+MIT. See [LICENSE](LICENSE).
